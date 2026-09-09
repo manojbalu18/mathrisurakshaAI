@@ -21,6 +21,11 @@ from ai_engine import calculate_risk
 from dotenv import load_dotenv
 from translations import TRANSLATIONS
 from connectivity import is_online
+from lm_studio_client import LMStudioClient
+from ai_service import AIService
+from voice_service import VoiceService
+from tts_service import TTSService
+import config
 
 load_dotenv()
 
@@ -102,6 +107,16 @@ def init_session_state():
         st.session_state['asha_page'] = "Dashboard Overview"
     if 'alert_checked' not in st.session_state:
         st.session_state['alert_checked'] = False
+    if 'active_audio_idx' not in st.session_state:
+        st.session_state['active_audio_idx'] = None
+    if 'audio_cache' not in st.session_state:
+        st.session_state['audio_cache'] = {}
+    if 'lm_studio_url' not in st.session_state:
+        st.session_state['lm_studio_url'] = config.LM_STUDIO_BASE_URL
+    if 'lm_studio_model' not in st.session_state:
+        st.session_state['lm_studio_model'] = config.LM_STUDIO_MODEL
+    if 'voice_chat_processed' not in st.session_state:
+        st.session_state['voice_chat_processed'] = False
 
 def _t(key):
     """Helper function to get translation."""
@@ -713,17 +728,15 @@ def mother_dashboard():
         if audio_data is not None:
             if not st.session_state['audio_processed']:
                 with st.spinner(_t("processing_audio")):
-                    import speech_recognition as sr
-                    try:
-                        r = sr.Recognizer()
-                        with sr.AudioFile(audio_data) as source:
-                            audio = r.record(source)
-                        
-                        text = r.recognize_google(audio)
-                        st.session_state['transcription'] = text
-                    except Exception as e:
-                        print(f"Audio processing error: {e}")
-                        st.error(_t("err_audio_fail"))
+                    vs = VoiceService()
+                    res = vs.transcribe_audio_data(audio_data, language_name=st.session_state.get('language', 'English'))
+                    if res["status"] == "success":
+                        st.session_state['transcription'] = res["text"]
+                    elif res["status"] == "not_understood":
+                        st.warning(f"⚠️ {res['message']}")
+                        st.session_state['transcription'] = ""
+                    else:
+                        st.error(f"❌ {res['message']}")
                         st.session_state['transcription'] = _t("err_audio_fail")
                         
                     st.session_state['audio_processed'] = True
@@ -1585,127 +1598,213 @@ def mother_dashboard():
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); padding: 25px; border-radius: 15px; margin-bottom: 25px; color: #333; box-shadow: 0 4px 15px rgba(142,197,252,0.3);">
             <h1 style="margin:0; font-size: 2rem; display: flex; align-items: center; gap: 10px;">🤖 AI Health Assistant</h1>
-            <p style="margin: 5px 0 0 0; font-size: 1.1rem; opacity: 0.9;">Your 24/7 personal pregnancy guide.</p>
+            <p style="margin: 5px 0 0 0; font-size: 1.1rem; opacity: 0.9;">Your 24/7 personal pregnancy guide with Local LM Studio & Voice Interaction.</p>
         </div>
         """, unsafe_allow_html=True)
+
+        # Initialize LM Studio Client and AI Services
+        lm_client = LMStudioClient(
+            base_url=st.session_state.get('lm_studio_url', config.LM_STUDIO_BASE_URL),
+            default_model=st.session_state.get('lm_studio_model', config.LM_STUDIO_MODEL)
+        )
+        ai_svc = AIService(client=lm_client)
+        voice_svc = VoiceService()
+        tts_svc = TTSService()
+
+        # Check LM Studio connectivity
+        conn_status = lm_client.check_connection(timeout=1.5)
+        is_lm_online = conn_status.get("online", False)
+
+        # Render status banner
+        if is_lm_online:
+            st.markdown(f"""
+            <div style="background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <strong>🟢 LM Studio Active</strong> — Model: <code>{conn_status.get('active_model', 'local-model')}</code> &nbsp;|&nbsp; Server: <code>{lm_client.base_url}</code>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="background: #fff8e1; border: 1px solid #ffe082; color: #b78103; padding: 14px 18px; border-radius: 10px; margin-bottom: 20px;">
+                <div style="font-weight: bold; font-size: 1rem; margin-bottom: 4px;">🟡 LM Studio Offline — Using Local Rule-Based Engine</div>
+                <div style="font-size: 0.9rem; color: #5d4037; line-height: 1.5;">
+                    The assistant is currently operating in offline fallback mode. To enable your local LLM:
+                    <ol style="margin: 6px 0 0 18px; padding: 0;">
+                        <li>Open <strong>LM Studio</strong>.</li>
+                        <li>Load your desired LLM model (e.g. <i>Llama 3, Mistral, Gemma, Phi-3</i>).</li>
+                        <li>Click the <strong>Local Server</strong> tab on the left and click <strong>Start Server</strong> (default port 1234).</li>
+                    </ol>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Expandable LM Studio Settings
+        with st.expander("⚙️ LM Studio Connection Settings", expanded=False):
+            cfg_col1, cfg_col2, cfg_col3 = st.columns([2, 2, 1])
+            with cfg_col1:
+                new_url = st.text_input("LM Studio Base URL", value=st.session_state.get('lm_studio_url', config.LM_STUDIO_BASE_URL))
+            with cfg_col2:
+                new_model = st.text_input("Model ID (Optional)", value=st.session_state.get('lm_studio_model', config.LM_STUDIO_MODEL), placeholder="Auto-detect if blank")
+            with cfg_col3:
+                st.write("")
+                st.write("")
+                if st.button("Apply & Test", use_container_width=True):
+                    st.session_state['lm_studio_url'] = new_url.strip()
+                    st.session_state['lm_studio_model'] = new_model.strip()
+                    test_client = LMStudioClient(base_url=new_url.strip(), default_model=new_model.strip())
+                    test_check = test_client.check_connection(timeout=2.0)
+                    if test_check["online"]:
+                        st.toast(f"✅ Connected to LM Studio! Active model: {test_check['active_model']}", icon="🟢")
+                    else:
+                        st.toast(f"⚠️ {test_check['message']}", icon="🟡")
+                    st.rerun()
 
         # Initialize chat history
         if "messages" not in st.session_state:
             st.session_state.messages = []
-            # Add initial greeting
-            st.session_state.messages.append({"role": "assistant", "content": f"Namaste! I am your MAATRI AI Assistant. How can I help you with your pregnancy journey today?"})
+            greeting = "Namaste! I am your MAATRI AI Assistant. How can I help you with your pregnancy journey today?"
+            current_lang = st.session_state.get('language', 'English')
+            if current_lang != "English":
+                greeting = ai_svc.translate_text(greeting, current_lang)
+            st.session_state.messages.append({"role": "assistant", "content": greeting})
 
-        # Display chat messages
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"], avatar="🤖" if message["role"] == "assistant" else "👤"):
+        # Unified query execution handler
+        def execute_user_query(query_text: str):
+            if not query_text or not query_text.strip():
+                return
+            
+            # 1. Append user message to state
+            st.session_state.messages.append({"role": "user", "content": query_text.strip()})
+
+            # 2. Fetch patient context from DB
+            mother_id = st.session_state.get('unique_id', 'Unknown')
+            mother_name = st.session_state.get('mother_name', '')
+            risk_level = "Normal"
+            if mother_id != 'Unknown':
+                try:
+                    conn = sqlite3.connect("maatrisuraksha.db")
+                    c = conn.cursor()
+                    c.execute("SELECT risk_level FROM daily_logs WHERE user_id=? ORDER BY date DESC LIMIT 1", (mother_id,))
+                    latest_log = c.fetchone()
+                    conn.close()
+                    if latest_log:
+                        risk_level = latest_log[0]
+                except Exception:
+                    pass
+
+            user_ctx = {"risk_level": risk_level, "mother_name": mother_name}
+            active_lang = st.session_state.get('language', 'English')
+
+            # 3. Call AI Service (unified pipeline for text and voice)
+            result = ai_svc.process_message(
+                prompt=query_text,
+                chat_history=st.session_state.messages[:-1],
+                user_context=user_ctx,
+                language_name=active_lang,
+                custom_model=st.session_state.get('lm_studio_model')
+            )
+
+            # 4. Append assistant response
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": result["response"],
+                "source": result["source"],
+                "is_emergency": result["is_emergency"],
+                "diagnostic": result.get("diagnostic", "")
+            })
+
+        # Display chat messages and voice output controls
+        for idx, message in enumerate(st.session_state.messages):
+            role = message.get("role", "assistant")
+            with st.chat_message(role, avatar="🤖" if role == "assistant" else "👤"):
                 st.markdown(message["content"])
 
-        # Chat input
-        if prompt := st.chat_input("Ask a question about your health, nutrition, or pregnancy..."):
-            # Update UI instantly with user message
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user", avatar="👤"):
-                st.markdown(prompt)
+                # Voice output controls for assistant responses
+                if role == "assistant":
+                    col_listen, col_stop, col_diag = st.columns([1, 1, 4])
+                    is_currently_playing = (st.session_state.get('active_audio_idx') == idx)
 
-            # ---------------- 1. EMERGENCY SAFETY OVERRIDE ----------------
-            emergency_keywords = ["bleeding", "dizzy", "dizziness", "chest pain", "faint", "fainting", "high swelling", "pain in heart", "severe pain", "cannot breathe", "shortness of breath"]
-            is_emergency = any(kw in prompt.lower() for kw in emergency_keywords)
+                    with col_listen:
+                        btn_label = "🔊 Listen" if not is_currently_playing else "🔄 Replay"
+                        if st.button(btn_label, key=f"btn_play_{idx}", use_container_width=True):
+                            st.session_state['active_audio_idx'] = idx
+                            st.rerun()
+
+                    with col_stop:
+                        if is_currently_playing:
+                            if st.button("⏹ Stop", key=f"btn_stop_{idx}", use_container_width=True):
+                                st.session_state['active_audio_idx'] = None
+                                st.rerun()
+
+                    with col_diag:
+                        src = message.get("source")
+                        if src == "lm_studio":
+                            st.caption("⚡ Powered by LM Studio Local Model")
+                        elif src == "emergency_override":
+                            st.caption("🚨 Medical Emergency Interceptor")
+                        elif src == "fallback":
+                            st.caption("ℹ️ Local Knowledge Base")
+
+                    # If this message is active for playback, synthesize or play cached audio
+                    if is_currently_playing:
+                        cached_audio = st.session_state.get('audio_cache', {}).get(idx)
+                        if not cached_audio:
+                            with st.spinner("Synthesizing voice audio..."):
+                                cached_audio = tts_svc.synthesize(
+                                    message["content"],
+                                    language_name=st.session_state.get('language', 'English')
+                                )
+                                if 'audio_cache' not in st.session_state:
+                                    st.session_state['audio_cache'] = {}
+                                st.session_state['audio_cache'][idx] = cached_audio
+
+                        if cached_audio:
+                            st.audio(cached_audio, format="audio/mp3", autoplay=True)
+                        else:
+                            st.warning("⚠️ Audio playback could not be generated for this response.")
+
+        # Voice Input Control (Microphone Section)
+        st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+        with st.container():
+            st.markdown(f"#### 🎙️ Voice Input ({st.session_state.get('language', 'English')})")
+            st.caption("Speak your question or symptoms in your preferred language. Audio is recognized and fed into the AI assistant.")
             
-            with st.chat_message("assistant", avatar="🤖"):
-                if is_emergency:
-                    response_text = "⚠ **CRITICAL ALERT:** These symptoms may indicate a high-risk pregnancy condition. Please contact your ASHA worker or nearest health center immediately."
-                    st.error(response_text)
-                    st.session_state.messages.append({"role": "assistant", "content": response_text})
-                else:
-                    # ---------------- 2. LOCAL RULE-BASED AI ENGINE ----------------
-                    with st.spinner("MAATRI AI is thinking..."):
-                        # Fetch user context
-                        mother_id = st.session_state.get('unique_id', 'Unknown')
-                        risk_level = "Normal"
-                        if mother_id != 'Unknown':
-                            conn = sqlite3.connect("maatrisuraksha.db")
-                            c = conn.cursor()
-                            c.execute("SELECT risk_level FROM daily_logs WHERE user_id=? ORDER BY date DESC LIMIT 1", (mother_id,))
-                            latest_log = c.fetchone()
-                            conn.close()
-                            if latest_log:
-                                risk_level = latest_log[0]
-                                
-                        # Local Knowledge Base
-                        prompt_lower = prompt.lower()
-                        response_text = "I am your MAATRI AI Assistant. Please ask me questions about your diet, exercises, or pregnancy symptoms."
-                        
-                        # --- Expanded Local Knowledge Base ---
-                        if any(kw in prompt_lower for kw in ["iron", "anemia", "weak"]):
-                            response_text = "To increase iron, eat spinach, jaggery, beetroot, and legumes. Taking Vitamin C (like lemon juice) helps your body absorb iron better. Also remember your IFA tablets!"
-                        elif any(kw in prompt_lower for kw in ["calcium", "milk", "bones", "paneer"]):
-                            response_text = "Calcium is important for your baby's bones. Drink milk daily, and eat yogurt, paneer, and ragi."
-                        elif any(kw in prompt_lower for kw in ["folic", "acid", "spinach"]):
-                            response_text = "Folic acid is crucial, especially early in pregnancy. Keep taking your supplements and eat dark green vegetables, lentils, and citrus fruits."
-                        elif "papaya" in prompt_lower:
-                            response_text = "Avoid raw or semi-ripe papaya during pregnancy, as it contains latex which can trigger contractions. Fully ripe papaya is generally safe in moderation, but it is best to consult your doctor."
-                        elif "pineapple" in prompt_lower:
-                            response_text = "Pineapple in large amounts can sometimes cause softening of the cervix due to bromelain. It is usually best to avoid it early in pregnancy."
-                        elif any(kw in prompt_lower for kw in ["coffee", "tea", "caffeine"]):
-                            response_text = "Limit caffeine! Try to have no more than 1-2 small cups of tea or coffee a day. Too much caffeine is not healthy for the baby."
-                        elif any(kw in prompt_lower for kw in ["water", "drink", "thirsty", "hydration"]):
-                            response_text = "Drink at least 8 to 10 glasses of clean water daily. Staying hydrated reduces cramps and helps form the amniotic fluid around the baby."
-                        elif any(kw in prompt_lower for kw in ["weight", "gain", "heavy"]):
-                            response_text = "A steady weight gain is normal and healthy! Most women gain between 10-12 kg in total. Focus on nutritious food, not just quantity."
-                        elif any(kw in prompt_lower for kw in ["eat", "diet", "food", "nutrition", "hungry"]):
-                            response_text = "Eat a balanced diet rich in iron, calcium, and protein. Include green leafy vegetables, dairy, and fruits. Drink plenty of water."
-                        elif any(kw in prompt_lower for kw in ["walk", "exercise", "yoga", "workout"]):
-                            response_text = "Light walking for 30 minutes a day is very good. You can also do safe pregnancy yoga like the Butterfly pose. Avoid heavy lifting."
-                        elif any(kw in prompt_lower for kw in ["sleep", "tired", "rest", "fatigue"]):
-                            response_text = "Pregnant mothers should sleep at least 8 hours at night and rest 2 hours during the day. Sleep on your left side for better blood flow to the baby."
-                        elif any(kw in prompt_lower for kw in ["swell", "feet", "legs"]):
-                            response_text = "Mild swelling in feet is common. Rest with your feet elevated. But if swelling is severe in face or hands, tell your ASHA worker."
-                        elif any(kw in prompt_lower for kw in ["vomit", "nausea", "morning sickness"]):
-                            response_text = "Morning sickness is common. Eat small, frequent meals. Ginger tea and dry toast can help. If you cannot keep any food down, visit the clinic."
-                        elif any(kw in prompt_lower for kw in ["headache", "dizzy", "spin"]):
-                            response_text = "Rest, drink water, and eat something. If a headache is severe or comes with blurry vision, this is a danger sign! See a doctor immediately."
-                        elif any(kw in prompt_lower for kw in ["back", "backache"]):
-                            response_text = "Backache is common as your baby grows. Maintain good posture, wear flat shoes, and try light stretching. Do not lift heavy objects."
-                        elif any(kw in prompt_lower for kw in ["pain", "ache", "cramp"]):
-                            if any(kw in prompt_lower for kw in ["chest", "stomach", "severe", "hard"]):
-                                response_text = "Severe pain is a danger sign! Please visit the nearest health center immediately."
-                            else:
-                                response_text = "Mild pelvic aches are normal. Rest well. Tell your doctor if the pain is sharp or continuous."
-                        elif any(kw in prompt_lower for kw in ["baby", "kick", "movement"]):
-                            response_text = "You should start feeling your baby move regularly by 24 weeks. If you notice a sudden decrease in kicks after 28 weeks, go to the hospital."
-                        elif any(kw in prompt_lower for kw in ["vaccine", "injection", "tt"]):
-                            response_text = "Make sure to get your TT (Tetanus) injections as scheduled by your ASHA worker. It protects both you and the baby."
-                        elif any(kw in prompt_lower for kw in ["danger", "emergency", "warning"]):
-                            response_text = "Danger signs include: heavy bleeding, severe headache, blurry vision, severe stomach pain, or if the baby stops moving. Seek immediate medical help if these happen."
-                        
-                        # Add context awareness
-                        if risk_level == "High" and response_text != "I am your MAATRI AI Assistant. Please ask me questions about your diet, exercises, or pregnancy symptoms.":
-                            response_text += "\n\n(Note: Your last log showed a High Risk level. Please make sure to stay in touch with your ASHA worker for your safety.)"
-                            
-                        # Translate the response
-                        target_lang = st.session_state.get('language', 'English')
-                        target_lang_code = 'en'
-                        for code, name in TRANSLATIONS.items():
-                            if name == target_lang:
-                                target_lang_code = code
-                                break
-                        
-                        if target_lang_code != 'en':
-                            try:
-                                from mtranslate import translate
-                                response_text = translate(response_text, target_lang_code, "en")
-                            except Exception as e:
-                                pass # Fallback to English if translation fails
-                        
-                        st.markdown(response_text)
-                        st.session_state.messages.append({"role": "assistant", "content": response_text})
+            voice_audio = st.audio_input("Record voice query", key="assistant_voice_mic")
+            
+            if voice_audio is not None:
+                if not st.session_state.get('voice_chat_processed', False):
+                    with st.spinner(f"🎙️ Listening & Transcribing speech in {st.session_state.get('language', 'English')}..."):
+                        rec_result = voice_svc.transcribe_audio_data(
+                            voice_audio,
+                            language_name=st.session_state.get('language', 'English')
+                        )
+                    
+                    if rec_result["status"] == "success":
+                        recognized_text = rec_result["text"]
+                        st.success(f"✅ Speech recognized: \"{recognized_text}\"")
+                        st.session_state['voice_chat_processed'] = True
+                        execute_user_query(recognized_text)
+                        st.rerun()
+                    elif rec_result["status"] == "not_understood":
+                        st.warning("❓ Speech not understood. Please speak clearly and record again.")
+                    else:
+                        st.error(f"❌ Microphone/Speech error: {rec_result['message']}")
+            else:
+                st.session_state['voice_chat_processed'] = False
+
+        # Text input (keeps normal typed input fully functional)
+        if prompt := st.chat_input("Ask a question about your health, nutrition, or pregnancy..."):
+            execute_user_query(prompt)
+            st.rerun()
 
         # Safety Disclaimer Footer
         st.markdown("""
         <div style="text-align: center; margin-top: 50px; padding: 10px; border-top: 1px solid #eee;">
-            <p style="color: #999; font-size: 0.8rem; margin: 0;"><i>This AI assistant provides general pregnancy guidance and does not replace professional medical advice.</i></p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0;"><i>This AI assistant provides general pregnancy guidance and does not replace professional medical advice. Always consult your ASHA worker or doctor for medical treatment.</i></p>
         </div>
         """, unsafe_allow_html=True)
+
 
 def baby_dashboard():
     """Render the Baby Care (Post Delivery) Portal."""
