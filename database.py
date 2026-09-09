@@ -1,0 +1,513 @@
+import sqlite3
+
+# ---------------- INITIALIZE DATABASE ----------------
+def init_db():
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+
+    # Users Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        unique_id TEXT UNIQUE,
+        name TEXT,
+        role TEXT,
+        phone TEXT,
+        village TEXT,
+        latitude REAL,
+        longitude REAL
+    )
+    """)
+
+    # Migration for existing database
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN unique_id TEXT UNIQUE")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN latitude REAL")
+        c.execute("ALTER TABLE users ADD COLUMN longitude REAL")
+    except sqlite3.OperationalError:
+        pass
+
+    # Daily Logs Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS daily_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        symptoms TEXT,
+        mood TEXT,
+        nutrition TEXT,
+        risk_score INTEGER,
+        risk_level TEXT,
+        date TEXT
+    )
+    """)
+
+    # Alerts Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        risk_level TEXT,
+        status TEXT,
+        timestamp TEXT
+    )
+    """)
+
+    # Mock SMS Logs Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS mock_sms_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mother_id TEXT,
+        message TEXT,
+        status TEXT,
+        timestamp TEXT
+    )
+    """)
+
+    # Live SMS Logs Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS sms_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mother_id TEXT,
+        asha_phone TEXT,
+        message TEXT,
+        api_status TEXT,
+        timestamp TEXT
+    )
+    """)
+    # Migration for existing database
+    try:
+        c.execute("ALTER TABLE sms_logs ADD COLUMN asha_phone TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    # Offline Sync Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS offline_sync (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        feature TEXT,
+        payload TEXT,
+        timestamp TEXT
+    )
+    """)
+
+    # Baby Profiles Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS baby_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mother_id TEXT UNIQUE,
+        delivery_date TEXT,
+        baby_gender TEXT,
+        created_at TEXT
+    )
+    """)
+
+    # Baby Health Logs Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS baby_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mother_id TEXT,
+        fever TEXT,
+        cough TEXT,
+        weight REAL,
+        feeding_pattern TEXT,
+        sleep_hours REAL,
+        date TEXT
+    )
+    """)
+
+    # Vaccinations Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS vaccinations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mother_id TEXT,
+        vaccine_name TEXT,
+        due_date TEXT,
+        status TEXT,
+        completed_date TEXT
+    )
+    """)
+
+    # Exercise Logs Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS exercise_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mother_id TEXT,
+        exercise_type TEXT,
+        timestamp TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# ---------------- REGISTER MOTHER ----------------
+def register_mother(unique_id, name, phone, village):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    try:
+        c.execute("""
+        INSERT INTO users (unique_id, name, role, phone, village)
+        VALUES (?, ?, 'Mother', ?, ?)
+        """, (unique_id, name, phone, village))
+        conn.commit()
+        success = True
+    except sqlite3.IntegrityError:
+        # unique_id already exists
+        success = False
+    conn.close()
+    return success
+
+# ---------------- VERIFY MOTHER LOGIN ----------------
+def verify_mother(unique_id, name):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    # verify unique_id and name
+    c.execute("SELECT * FROM users WHERE role='Mother' AND unique_id=? COLLATE NOCASE AND name=? COLLATE NOCASE", (unique_id, name))
+    user = c.fetchone()
+    conn.close()
+    return user is not None
+
+# ---------------- GET ALL MOTHERS ----------------
+def get_all_mothers():
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("SELECT unique_id, name, phone, village, latitude, longitude FROM users WHERE role='Mother'")
+    mothers = c.fetchall()
+    conn.close()
+    return mothers
+
+# ---------------- GET ASHA PHONE ----------------
+def get_asha_phone(village):
+    """Retrieve an ASHA worker's phone number. Hardcoded to 9347798766 for demo."""
+    return "9347798766"
+
+
+# ---------------- UPDATE LOCATION ----------------
+def update_location(unique_id, lat, lon):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    UPDATE users SET latitude=?, longitude=? WHERE unique_id=?
+    """, (lat, lon, unique_id))
+    conn.commit()
+    conn.close()
+
+
+# ---------------- GET MOTHERS WITH RISK AND LOCATION ----------------
+def get_mothers_with_risk_and_location():
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    WITH LatestLogs AS (
+        SELECT user_id, risk_level, risk_score, date
+        FROM daily_logs
+        WHERE id IN (
+            SELECT MAX(id)
+            FROM daily_logs
+            GROUP BY user_id
+        )
+    )
+    SELECT u.unique_id, u.name, u.village, u.latitude, u.longitude,
+           l.risk_level, l.risk_score, l.date
+    FROM users u
+    LEFT JOIN LatestLogs l ON u.unique_id = l.user_id
+    WHERE u.role='Mother'
+    """)
+    data = c.fetchall()
+    conn.close()
+    return data
+
+
+# ---------------- SAVE DAILY LOG ----------------
+def save_daily_log(user_id, symptoms, mood, nutrition, risk_score, risk_level, date):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+
+    c.execute("""
+    INSERT INTO daily_logs (user_id, symptoms, mood, nutrition, risk_score, risk_level, date)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, ",".join(symptoms), mood, nutrition, risk_score, risk_level, date))
+
+    conn.commit()
+    conn.close()
+
+
+# ---------------- CREATE ALERT ----------------
+def create_alert(user_id, risk_level, timestamp):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+
+    c.execute("""
+    INSERT INTO alerts (user_id, risk_level, status, timestamp)
+    VALUES (?, ?, ?, ?)
+    """, (user_id, risk_level, "Active", timestamp))
+
+    conn.commit()
+    conn.close()
+
+# ---------------- MOCK SMS OPERATIONS ----------------
+def log_mock_sms(mother_id, message, timestamp):
+    """Log the simulated SMS to the database to prevent duplicates and keep audit records."""
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    INSERT INTO mock_sms_logs (mother_id, message, status, timestamp)
+    VALUES (?, ?, ?, ?)
+    """, (mother_id, message, "Sent", timestamp))
+    conn.commit()
+    conn.close()
+
+# ---------------- LIVE SMS OPERATIONS ----------------
+def log_live_sms(mother_id, asha_phone, message, api_status, timestamp):
+    """Log the live SMS API attempt, saving both successes and HTTP failure codes."""
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    INSERT INTO sms_logs (mother_id, asha_phone, message, api_status, timestamp)
+    VALUES (?, ?, ?, ?, ?)
+    """, (mother_id, asha_phone, message, api_status, timestamp))
+    conn.commit()
+    conn.close()
+
+def has_recent_high_risk_sms(mother_id):
+    """Check if a High Risk SMS was already sent recently (within last 12 hours) to avoid spam."""
+    import datetime
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    
+    # Check both live and mock logs to be thorough during transition
+    c.execute("""
+    SELECT timestamp FROM (
+        SELECT timestamp FROM mock_sms_logs WHERE mother_id = ? AND status = 'Sent'
+        UNION ALL
+        SELECT timestamp FROM sms_logs WHERE mother_id = ? AND (api_status = 'Sent' OR api_status LIKE 'Success%')
+    ) 
+    ORDER BY timestamp DESC LIMIT 1
+    """, (mother_id, mother_id))
+    
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        last_time_str = row[0]
+        try:
+            last_time = datetime.datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
+            now = datetime.datetime.now()
+            diff = now - last_time
+            # If the last SMS was less than 12 hours ago, return True (prevent new SMS)
+            if diff.total_seconds() < (12 * 3600):
+                return True
+        except Exception:
+            # If timestamp parsing fails, play it safe and maybe don't block
+            pass
+            
+    return False
+# ---------------- GET ALL LOGS ----------------
+def get_all_logs():
+    import sqlite3
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM daily_logs ORDER BY date DESC")
+    rows = c.fetchall()
+
+    conn.close()
+    return rows
+
+# ---------------- OFFLINE SYNC OPERATIONS ----------------
+def save_offline_record(user_id, feature, payload):
+    import datetime
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("""
+    INSERT INTO offline_sync (user_id, feature, payload, timestamp)
+    VALUES (?, ?, ?, ?)
+    """, (user_id, feature, payload, timestamp))
+    conn.commit()
+    conn.close()
+
+def get_pending_sync_records():
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM offline_sync")
+    records = c.fetchall()
+    conn.close()
+    return records
+
+def delete_sync_record(record_id):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM offline_sync WHERE id = ?", (record_id,))
+    conn.commit()
+    conn.close()
+
+
+# ---------------- RESOLVE ALERT ----------------
+def resolve_alert(mother_id):
+    """Mark all active alerts for a specific mother as Resolved."""
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("UPDATE alerts SET status = 'Resolved' WHERE user_id = ? AND status = 'Active'", (mother_id,))
+    conn.commit()
+    conn.close()
+
+# ---------------- GET ACTIVE ALERTS ----------------
+def get_active_alerts():
+    import sqlite3
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM alerts WHERE status='Active'")
+    rows = c.fetchall()
+
+    conn.close()
+    return rows
+
+# ---------------- BABY CARE OPERATIONS ----------------
+def register_baby(mother_id, delivery_date, gender):
+    import datetime
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    created_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        c.execute("""
+        INSERT INTO baby_profiles (mother_id, delivery_date, baby_gender, created_at)
+        VALUES (?, ?, ?, ?)
+        """, (mother_id, delivery_date, gender, created_at))
+        
+        # Auto-populate initial vaccination schedule
+        vaccines = [
+            ("BCG, OPV", 0), # Birth
+            ("DPT, Hepatitis B", 42), # 6 weeks (approx 42 days)
+            ("DPT", 70), # 10 weeks
+            ("DPT", 98), # 14 weeks
+            ("Measles", 270) # 9 months
+        ]
+        
+        delivery_dt = datetime.datetime.strptime(delivery_date, "%Y-%m-%d")
+        for v_name, days_after in vaccines:
+            due_dt = delivery_dt + datetime.timedelta(days=days_after)
+            c.execute("""
+            INSERT INTO vaccinations (mother_id, vaccine_name, due_date, status)
+            VALUES (?, ?, ?, ?)
+            """, (mother_id, v_name, due_dt.strftime("%Y-%m-%d"), 'Pending'))
+            
+        conn.commit()
+        success = True
+    except sqlite3.IntegrityError:
+        # Profile already exists
+        success = False
+    conn.close()
+    return success
+
+def get_baby_profile(mother_id):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM baby_profiles WHERE mother_id=?", (mother_id,))
+    profile = c.fetchone()
+    conn.close()
+    return profile
+
+def get_baby_vaccinations(mother_id):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM vaccinations WHERE mother_id=? ORDER BY due_date ASC", (mother_id,))
+    vaccines = c.fetchall()
+    conn.close()
+    return vaccines
+
+def save_baby_log(mother_id, fever, cough, weight, feeding, sleep):
+    import datetime
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("""
+    INSERT INTO baby_logs (mother_id, fever, cough, weight, feeding_pattern, sleep_hours, date)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (mother_id, fever, cough, weight, feeding, sleep, date))
+    conn.commit()
+    conn.close()
+
+def get_baby_logs(mother_id):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("SELECT weight, feeding_pattern, sleep_hours, date FROM baby_logs WHERE mother_id=? ORDER BY date ASC", (mother_id,))
+    logs = c.fetchall()
+    conn.close()
+    return logs
+
+
+def get_all_babies():
+    """For ASHA worker dashboard"""
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    SELECT u.unique_id, u.name, u.village, b.delivery_date
+    FROM users u
+    JOIN baby_profiles b ON u.unique_id = b.mother_id
+    WHERE u.role='Mother'
+    """)
+    babies = c.fetchall()
+    conn.close()
+    return babies
+
+# Expose Village Health Intelligence Queries
+from database_village_health import (
+    get_maternal_risk_distribution,
+    get_village_risk_aggregations,
+    get_vaccination_coverage,
+    get_high_risk_mothers_alert,
+    get_baby_health_alerts,
+    get_upcoming_vaccinations,
+    generate_asha_daily_tasks
+)
+
+# ---------------- PREGNANCY EXERCISE COACH OPERATIONS ----------------
+def log_exercise(mother_id, exercise_type):
+    import datetime
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("""
+    INSERT INTO exercise_logs (mother_id, exercise_type, timestamp)
+    VALUES (?, ?, ?)
+    """, (mother_id, exercise_type, timestamp))
+    conn.commit()
+    conn.close()
+
+def get_mother_exercise_logs(mother_id):
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    SELECT exercise_type, timestamp 
+    FROM exercise_logs 
+    WHERE mother_id=? 
+    ORDER BY timestamp DESC
+    """, (mother_id,))
+    logs = c.fetchall()
+    conn.close()
+    return logs
+
+def get_latest_exercise_log_for_all_mothers():
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    SELECT e.mother_id, u.name, e.exercise_type, e.timestamp
+    FROM exercise_logs e
+    JOIN users u ON e.mother_id = u.unique_id
+    WHERE e.id IN (
+        SELECT MAX(id)
+        FROM exercise_logs
+        GROUP BY mother_id
+    )
+    ORDER BY e.timestamp DESC
+    """)
+    logs = c.fetchall()
+    conn.close()
+    return logs
