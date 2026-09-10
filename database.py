@@ -91,11 +91,17 @@ def init_db():
         timestamp TEXT
     )
     """)
-    # Migration for existing database
-    try:
-        c.execute("ALTER TABLE sms_logs ADD COLUMN asha_phone TEXT")
-    except sqlite3.OperationalError:
-        pass
+    # Call Logs Table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS call_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mother_id TEXT,
+        asha_phone TEXT,
+        call_sid TEXT,
+        status TEXT,
+        timestamp TEXT
+    )
+    """)
 
     # Offline Sync Table
     c.execute("""
@@ -312,6 +318,17 @@ def log_live_sms(mother_id, asha_phone, message, api_status, timestamp):
     INSERT INTO sms_logs (mother_id, asha_phone, message, api_status, timestamp)
     VALUES (?, ?, ?, ?, ?)
     """, (mother_id, asha_phone, message, api_status, timestamp))
+    conn.commit()
+    conn.close()
+
+def log_live_call(mother_id, asha_phone, call_sid, status, timestamp):
+    """Log the live automated call attempt."""
+    conn = sqlite3.connect("maatrisuraksha.db")
+    c = conn.cursor()
+    c.execute("""
+    INSERT INTO call_logs (mother_id, asha_phone, call_sid, status, timestamp)
+    VALUES (?, ?, ?, ?, ?)
+    """, (mother_id, asha_phone, call_sid, status, timestamp))
     conn.commit()
     conn.close()
 
