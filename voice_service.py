@@ -5,8 +5,13 @@ and structured UI state reporting.
 """
 
 import io
-from typing import Dict, Any, Union, BinaryIO
-import speech_recognition as sr
+try:
+    import speech_recognition as sr
+    SR_AVAILABLE = True
+except ImportError:
+    sr = None
+    SR_AVAILABLE = False
+
 from config import STT_LANGUAGE_MAP
 
 
@@ -14,7 +19,10 @@ class VoiceService:
     """Service for transcribing audio data into text across Indian regional languages."""
 
     def __init__(self):
-        self.recognizer = sr.Recognizer()
+        if SR_AVAILABLE and sr is not None:
+            self.recognizer = sr.Recognizer()
+        else:
+            self.recognizer = None
 
     def get_stt_language_code(self, language_name: str) -> str:
         """Map human language name to BCP-47 Google Speech Recognition code."""

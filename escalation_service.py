@@ -11,9 +11,17 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, Set, List
 
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioRestException
-from twilio.twiml.voice_response import VoiceResponse, Say
+try:
+    from twilio.rest import Client
+    from twilio.base.exceptions import TwilioRestException
+    from twilio.twiml.voice_response import VoiceResponse, Say
+    TWILIO_AVAILABLE = True
+except ImportError:
+    Client = None
+    TwilioRestException = Exception
+    VoiceResponse = None
+    Say = None
+    TWILIO_AVAILABLE = False
 
 import config
 from phone_utils import (

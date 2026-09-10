@@ -6,8 +6,13 @@ with clean text sanitization and multi-language support.
 
 import io
 import re
-from typing import Optional
-from gtts import gTTS
+try:
+    from gtts import gTTS
+    GTTS_AVAILABLE = True
+except ImportError:
+    gTTS = None
+    GTTS_AVAILABLE = False
+
 from config import TTS_LANGUAGE_MAP
 
 
@@ -55,7 +60,7 @@ class TTSService:
             bytes: MP3 audio data or None if synthesis failed.
         """
         cleaned_text = self.clean_text_for_speech(text)
-        if not cleaned_text:
+        if not cleaned_text or not GTTS_AVAILABLE or gTTS is None:
             return None
 
         lang_code = self.get_tts_language_code(language_name)
