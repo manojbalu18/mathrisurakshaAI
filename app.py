@@ -1,3 +1,6 @@
+import config
+config.load_project_env()
+
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -14,20 +17,20 @@ from streamlit_geolocation import streamlit_geolocation
 import base64
 
 import database
-import pandas as pd
 import plotly.graph_objects as go
 from database import register_mother, verify_mother, get_all_mothers, update_location, get_mothers_with_risk_and_location, save_daily_log, create_alert, log_live_sms, get_active_alerts, get_all_logs, has_recent_high_risk_sms
-from ai_engine import calculate_risk
-from dotenv import load_dotenv
+from ai_engine import calculate_risk, calculate_risk_from_text, extract_symptoms
 from translations import TRANSLATIONS
 from connectivity import is_online
 from lm_studio_client import LMStudioClient
 from ai_service import AIService
 from voice_service import VoiceService
 from tts_service import TTSService
-import config
+from escalation_service import EscalationService
+import hashlib
 
-load_dotenv()
+# Print startup configuration diagnostic safely
+config.print_config_diagnostic()
 
 # Initialize Database tables
 database.init_db()
@@ -113,10 +116,28 @@ def init_session_state():
         st.session_state['audio_cache'] = {}
     if 'lm_studio_url' not in st.session_state:
         st.session_state['lm_studio_url'] = config.LM_STUDIO_BASE_URL
+    if 'lm_studio_chat_endpoint' not in st.session_state:
+        st.session_state['lm_studio_chat_endpoint'] = getattr(config, 'LM_STUDIO_CHAT_ENDPOINT', f"{config.LM_STUDIO_BASE_URL}/chat/completions")
     if 'lm_studio_model' not in st.session_state:
         st.session_state['lm_studio_model'] = config.LM_STUDIO_MODEL
     if 'voice_chat_processed' not in st.session_state:
         st.session_state['voice_chat_processed'] = False
+    if 'voice_ai_response' not in st.session_state:
+        st.session_state['voice_ai_response'] = None
+    if 'voice_risk_result' not in st.session_state:
+        st.session_state['voice_risk_result'] = None
+    if 'voice_ai_status' not in st.session_state:
+        st.session_state['voice_ai_status'] = None
+    if 'voice_ai_audio' not in st.session_state:
+        st.session_state['voice_ai_audio'] = False
+    if 'last_processed_audio_hash' not in st.session_state:
+        st.session_state['last_processed_audio_hash'] = None
+    if 'voice_escalation_res' not in st.session_state:
+        st.session_state['voice_escalation_res'] = None
+    if 'voice_ai_audio_bytes' not in st.session_state:
+        st.session_state['voice_ai_audio_bytes'] = None
+
+
 
 def _t(key):
     """Helper function to get translation."""
@@ -721,75 +742,224 @@ def mother_dashboard():
         st.title(_t("voice_input_title"))
         st.markdown(_t("voice_desc"))
         
+        # Initialize AI & TTS services
+        lm_client = LMStudioClient(
+            base_url=st.session_state.get('lm_studio_url', config.LM_STUDIO_BASE_URL),
+            chat_endpoint=st.session_state.get('lm_studio_chat_endpoint', getattr(config, 'LM_STUDIO_CHAT_ENDPOINT', None)),
+            default_model=st.session_state.get('lm_studio_model', config.LM_STUDIO_MODEL)
+        )
+        ai_svc = AIService(client=lm_client)
+        tts_svc = TTSService()
+
         st.markdown("<div class='health-card' style='text-align: center; padding: 2rem;'>", unsafe_allow_html=True)
         audio_data = st.audio_input(_t("audio_input_label"))
         st.markdown("</div>", unsafe_allow_html=True)
         
         if audio_data is not None:
-            if not st.session_state['audio_processed']:
+            # Extract raw audio bytes to compute unique SHA-256 fingerprint
+            try:
+                audio_bytes = audio_data.getvalue()
+            except Exception:
+                try:
+                    audio_bytes = audio_data.read()
+                except Exception:
+                    audio_bytes = b""
+            
+            audio_hash = hashlib.sha256(audio_bytes).hexdigest() if audio_bytes else None
+
+            # Process automatically when new audio is recorded
+            if audio_hash and audio_hash != st.session_state.get('last_processed_audio_hash'):
                 with st.spinner(_t("processing_audio")):
                     vs = VoiceService()
-                    res = vs.transcribe_audio_data(audio_data, language_name=st.session_state.get('language', 'English'))
+                    active_app_lang = st.session_state.get('language', 'English')
+                    res = vs.transcribe_audio_data(audio_data, language_name=active_app_lang)
+                    
                     if res["status"] == "success":
-                        st.session_state['transcription'] = res["text"]
+                        recognized_text = res["text"].strip()
+                        st.session_state['transcription'] = recognized_text
+                        st.session_state['last_processed_audio_hash'] = audio_hash
+                        
+                        # Detect true language from transcription script or fallback to active app language
+                        detected_lang = ai_svc.detect_language(recognized_text, default_lang=active_app_lang)
+                        st.session_state['voice_detected_lang'] = detected_lang
+                        
+                        # 1. Deterministic Clinical Risk & Symptom Assessment Pipeline
+                        ai_result = calculate_risk_from_text(recognized_text, mood="normal", nutrition="good")
+                        extracted_symptoms = ai_result.get('extracted_symptoms', [])
+                        mother_id = st.session_state.get('unique_id', 'Unknown')
+                        mother_name = st.session_state.get('mother_name', '')
+                        
+                        # Database logging & alerts
+                        try:
+                            save_daily_log(mother_id, extracted_symptoms, "normal", "good", ai_result['risk_score'], ai_result['risk_level'], ai_result['timestamp'])
+                            if ai_result['escalation']:
+                                create_alert(mother_id, ai_result['risk_level'], ai_result['timestamp'])
+                        except Exception:
+                            pass
+                        
+                        st.session_state['voice_risk_result'] = {
+                            "score": ai_result['risk_score'],
+                            "level": ai_result['risk_level'],
+                            "recommendation": ai_result['recommendation'],
+                            "escalation": ai_result['escalation'],
+                            "is_emergency": ai_result.get('is_emergency', False),
+                            "extracted_symptoms": extracted_symptoms,
+                            "offline": not is_online(),
+                            "mother_id": mother_id
+                        }
+                        
+                        # 2. ASHA Worker Safety Escalation Pipeline (Deduplicated, deterministic)
+                        try:
+                            escalation_svc = EscalationService()
+                            escalation_res = escalation_svc.escalate(
+                                mother_id=mother_id,
+                                risk_result=ai_result,
+                                event_id=f"{mother_id}_{audio_hash}",
+                                user_context={"mother_name": mother_name, "risk_level": ai_result['risk_level']},
+                                language=detected_lang
+                            )
+                            st.session_state['voice_escalation_res'] = escalation_res
+                        except Exception:
+                            pass
+
+                        # 3. Conversational AI Pipeline (Same-Language Response)
+                        try:
+                            user_ctx = {
+                                "risk_level": ai_result.get('risk_level', 'Normal'),
+                                "mother_name": mother_name
+                            }
+                            ai_response = ai_svc.process_message(
+                                prompt=recognized_text,
+                                chat_history=[],
+                                user_context=user_ctx,
+                                language_name=detected_lang,
+                                custom_model=st.session_state.get('lm_studio_model')
+                            )
+                            st.session_state['voice_ai_response'] = ai_response
+                            st.session_state['voice_ai_status'] = "success"
+
+                            # 4. Automatic TTS Voice Output Synthesis (Same language)
+                            try:
+                                audio_bytes = tts_svc.synthesize(ai_response.get("response", ""), language_name=detected_lang)
+                                st.session_state['voice_ai_audio_bytes'] = audio_bytes
+                            except Exception:
+                                st.session_state['voice_ai_audio_bytes'] = None
+
+                        except Exception as e:
+                            st.session_state['voice_ai_response'] = {
+                                "response": f"AI Processing Error: {str(e)}",
+                                "source": "error",
+                                "is_emergency": False,
+                                "server_online": False,
+                                "diagnostic": str(e)
+                            }
+                            st.session_state['voice_ai_status'] = "error"
+                            st.session_state['voice_ai_audio_bytes'] = None
+                            
+                        st.rerun()
                     elif res["status"] == "not_understood":
                         st.warning(f"⚠️ {res['message']}")
                         st.session_state['transcription'] = ""
+                        st.session_state['last_processed_audio_hash'] = audio_hash
                     else:
                         st.error(f"❌ {res['message']}")
                         st.session_state['transcription'] = _t("err_audio_fail")
-                        
-                    st.session_state['audio_processed'] = True
-                    st.rerun()
+                        st.session_state['last_processed_audio_hash'] = audio_hash
         else:
-            if st.session_state['audio_processed']:
+            if st.session_state.get('last_processed_audio_hash'):
                 st.session_state['transcription'] = ""
-                st.session_state['audio_processed'] = False
+                st.session_state['last_processed_audio_hash'] = None
+                st.session_state['voice_ai_response'] = None
+                st.session_state['voice_risk_result'] = None
+                st.session_state['voice_ai_audio_bytes'] = None
                 
         transcribed_text = st.text_area(_t("transcription_label"), st.session_state['transcription'], height=100)
-        
-        if st.button(_t("btn_send_ai")):
-            if not transcribed_text.strip():
-                st.error(_t("err_record_first"))
+
+
+        # ---------------- AUTOMATIC VOICE STATUS & TTS PLAYBACK ----------------
+        if st.session_state.get('voice_ai_response'):
+            ai_resp = st.session_state['voice_ai_response']
+            is_emergency = ai_resp.get("is_emergency", False) or st.session_state.get('voice_risk_result', {}).get('is_emergency', False)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Urgent medical emergency safety banner if triggered
+            if is_emergency:
+                st.markdown("""
+                <div style="background: #ffebee; border: 2px solid #ef5350; color: #b71c1c; padding: 18px 22px; border-radius: 12px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 6px 0; color: #b71c1c; display: flex; align-items: center; gap: 8px;">🚨 Emergency Assistance Triggered</h3>
+                    <p style="margin: 0; font-size: 1.05rem; line-height: 1.5;">Immediate emergency care guidance active. Contacting <strong>108 Ambulance</strong> and your local ASHA worker immediately.</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # Essential Clean Visual Status Indicator
+            detected_lang_label = st.session_state.get('voice_detected_lang', st.session_state.get('language', 'English'))
+            st.markdown(f"""
+            <div style="background: white; border: 1px solid #e2e8f0; border-left: 5px solid #0284c7; border-radius: 10px; padding: 16px 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 1.6rem;">🔊</span>
+                <div>
+                    <strong style="color: #0f172a; font-size: 1rem;">AI Voice Guidance ({detected_lang_label})</strong>
+                    <p style="color: #64748b; font-size: 0.88rem; margin: 2px 0 0 0;">Spoken response active</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Automatic audio playback (No manual listen button required)
+            if st.session_state.get('voice_ai_audio_bytes'):
+                st.audio(st.session_state['voice_ai_audio_bytes'], format="audio/mp3", autoplay=True)
+
+
+        # ---------------- CLINICAL RISK ASSESSMENT ----------------
+        if st.session_state.get('voice_risk_result'):
+            risk_res = st.session_state['voice_risk_result']
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("### 🩺 Clinical Risk & Symptom Assessment")
+            
+            if risk_res.get('escalation') or risk_res.get('level') == "High" or risk_res.get('is_emergency'):
+                st.error(f"🚨 {_t('current_risk')}: HIGH RISK (Risk Score: {risk_res['score']}). {risk_res['recommendation']}")
+                if risk_res.get('offline'):
+                    from app import render_offline_sms_button
+                    render_offline_sms_button(risk_res.get('mother_id', 'Unknown'))
+            elif risk_res.get('level') == "Medium":
+                st.warning(f"⚠️ {_t('current_risk')}: MEDIUM RISK (Risk Score: {risk_res['score']}). {risk_res['recommendation']}")
             else:
-                # Mock NLP extraction of symptoms from transcription
-                extracted_symptoms = ["swelling"] if "swelling" in transcribed_text.lower() else []
-                ai_result = calculate_risk(extracted_symptoms, "normal", "good")
-                mother_id = st.session_state.get('unique_id', 'Unknown')
+                st.success(f"{_t('success_analyzed_voice')} Risk Score: {risk_res['score']} ({risk_res['level']} Risk). {risk_res['recommendation']}")
+
+            # Telephony Escalation Status Indicators
+            if st.session_state.get('voice_escalation_res'):
+                esc_res = st.session_state['voice_escalation_res']
+                sms_stat = esc_res.get("sms_status")
+                call_stat = esc_res.get("call_status")
                 
-                if is_online():
-                    save_daily_log(mother_id, extracted_symptoms, "normal", "good", ai_result['risk_score'], ai_result['risk_level'], ai_result['timestamp'])
-                    
-                    if ai_result['escalation']:
-                        create_alert(mother_id, ai_result['risk_level'], ai_result['timestamp'])
-                        st.error(f"🚨 {_t('current_risk')}: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
-                        
-                        # Live SMS verification
-                        if ai_result['risk_level'] == "High":
-                            if not has_recent_high_risk_sms(mother_id):
-                                from app import send_sms_alert
-                                send_sms_alert(mother_id)
+                status_pills = []
+                if sms_stat:
+                    if sms_stat.get("success"):
+                        if sms_stat.get("trial_mode"):
+                            status_pills.append("📱 **Twilio Trial SMS Alert Sent**")
+                        else:
+                            status_pills.append("📱 **Emergency SMS Sent**")
                     else:
-                        st.success(f"{_t('success_analyzed_voice')} Score: {ai_result['risk_score']}. {ai_result['recommendation']}")
-                else:
-                    # Save Offline to Local Database
-                    save_daily_log(mother_id, extracted_symptoms, "normal", "good", ai_result['risk_score'], ai_result['risk_level'], ai_result['timestamp'])
-                    
-                    if ai_result['escalation']:
-                        create_alert(mother_id, ai_result['risk_level'], ai_result['timestamp'])
-                        if ai_result['risk_level'] == "High":
-                            from app import render_offline_sms_button
-                            render_offline_sms_button(mother_id)
-                        
-                    # Still show the AI result UI so the offline experience feels identical
-                    if ai_result['escalation']:
-                        st.error(f"🚨 {_t('current_risk')}: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
-                    else:
-                        st.success(f"{_t('success_analyzed_voice')} Score: {ai_result['risk_score']}. {ai_result['recommendation']}")
+                        err_text = sms_stat.get("error", "Failed")
+                        if "trial" in str(err_text).lower():
+                            status_pills.append(f"⚠️ **Twilio Trial Restriction** ({sms_stat.get('status')})")
+                        else:
+                            status_pills.append("⚠️ **SMS Alert Failed**")
                 
-                # Clear transcription after sending
-                st.session_state['transcription'] = ""
-                st.session_state['audio_processed'] = False
+                if call_stat:
+                    if call_stat.get("success"):
+                        if call_stat.get("trial_mode"):
+                            status_pills.append("📞 **Twilio Trial Emergency Call Initiated**")
+                        else:
+                            status_pills.append("📞 **Emergency Call Initiated**")
+                    else:
+                        err_text = call_stat.get("error", "Failed")
+                        if "trial" in str(err_text).lower():
+                            status_pills.append(f"⚠️ **Twilio Trial Restriction** ({call_stat.get('status')})")
+                        else:
+                            status_pills.append("⚠️ **Emergency Call Failed**")
+                
+                if status_pills:
+                    st.caption(" • ".join(status_pills))
 
     elif page == "Food & Nutrition":
         st.title(_t("food_title"))
@@ -1605,6 +1775,7 @@ def mother_dashboard():
         # Initialize LM Studio Client and AI Services
         lm_client = LMStudioClient(
             base_url=st.session_state.get('lm_studio_url', config.LM_STUDIO_BASE_URL),
+            chat_endpoint=st.session_state.get('lm_studio_chat_endpoint', getattr(config, 'LM_STUDIO_CHAT_ENDPOINT', None)),
             default_model=st.session_state.get('lm_studio_model', config.LM_STUDIO_MODEL)
         )
         ai_svc = AIService(client=lm_client)
@@ -1620,7 +1791,7 @@ def mother_dashboard():
             st.markdown(f"""
             <div style="background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
                 <div>
-                    <strong>🟢 LM Studio Active</strong> — Model: <code>{conn_status.get('active_model', 'local-model')}</code> &nbsp;|&nbsp; Server: <code>{lm_client.base_url}</code>
+                    <strong>🟢 LM Studio Active</strong> — Model: <code>{conn_status.get('active_model', 'local-model')}</code> &nbsp;|&nbsp; Server: <code>{lm_client.base_url}</code> &nbsp;|&nbsp; Endpoint: <code>{lm_client.chat_endpoint}</code>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1632,7 +1803,7 @@ def mother_dashboard():
                     The assistant is currently operating in offline fallback mode. To enable your local LLM:
                     <ol style="margin: 6px 0 0 18px; padding: 0;">
                         <li>Open <strong>LM Studio</strong>.</li>
-                        <li>Load your desired LLM model (e.g. <i>Llama 3, Mistral, Gemma, Phi-3</i>).</li>
+                        <li>Load your desired LLM model (e.g. <i>qwen2.5-7b-instruct, Llama 3, Mistral</i>).</li>
                         <li>Click the <strong>Local Server</strong> tab on the left and click <strong>Start Server</strong> (default port 1234).</li>
                     </ol>
                 </div>
@@ -1641,24 +1812,30 @@ def mother_dashboard():
 
         # Expandable LM Studio Settings
         with st.expander("⚙️ LM Studio Connection Settings", expanded=False):
-            cfg_col1, cfg_col2, cfg_col3 = st.columns([2, 2, 1])
+            cfg_col1, cfg_col2, cfg_col3 = st.columns([2, 2, 2])
             with cfg_col1:
                 new_url = st.text_input("LM Studio Base URL", value=st.session_state.get('lm_studio_url', config.LM_STUDIO_BASE_URL))
             with cfg_col2:
-                new_model = st.text_input("Model ID (Optional)", value=st.session_state.get('lm_studio_model', config.LM_STUDIO_MODEL), placeholder="Auto-detect if blank")
+                default_endpoint = st.session_state.get('lm_studio_chat_endpoint', getattr(config, 'LM_STUDIO_CHAT_ENDPOINT', f"{config.LM_STUDIO_BASE_URL}/chat/completions"))
+                new_endpoint = st.text_input("Chat Completions Endpoint", value=default_endpoint)
             with cfg_col3:
-                st.write("")
-                st.write("")
-                if st.button("Apply & Test", use_container_width=True):
-                    st.session_state['lm_studio_url'] = new_url.strip()
-                    st.session_state['lm_studio_model'] = new_model.strip()
-                    test_client = LMStudioClient(base_url=new_url.strip(), default_model=new_model.strip())
-                    test_check = test_client.check_connection(timeout=2.0)
-                    if test_check["online"]:
-                        st.toast(f"✅ Connected to LM Studio! Active model: {test_check['active_model']}", icon="🟢")
-                    else:
-                        st.toast(f"⚠️ {test_check['message']}", icon="🟡")
-                    st.rerun()
+                new_model = st.text_input("Model ID", value=st.session_state.get('lm_studio_model', config.LM_STUDIO_MODEL), placeholder="e.g. qwen2.5-7b-instruct")
+            
+            if st.button("Apply & Test LM Studio Connection", use_container_width=True):
+                st.session_state['lm_studio_url'] = new_url.strip()
+                st.session_state['lm_studio_chat_endpoint'] = new_endpoint.strip()
+                st.session_state['lm_studio_model'] = new_model.strip()
+                test_client = LMStudioClient(
+                    base_url=new_url.strip(),
+                    chat_endpoint=new_endpoint.strip(),
+                    default_model=new_model.strip()
+                )
+                test_check = test_client.check_connection(timeout=2.0)
+                if test_check["online"]:
+                    st.toast(f"✅ Connected to LM Studio! Active model: {test_check['active_model']}", icon="🟢")
+                else:
+                    st.toast(f"⚠️ {test_check['message']}", icon="🟡")
+                st.rerun()
 
         # Initialize chat history
         if "messages" not in st.session_state:

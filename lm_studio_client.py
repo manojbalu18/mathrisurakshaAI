@@ -5,7 +5,13 @@ Communicates with locally running LM Studio OpenAI-compatible REST server.
 
 import requests
 from typing import List, Dict, Any, Optional
-from config import LM_STUDIO_BASE_URL, LM_STUDIO_MODEL, LM_STUDIO_TIMEOUT, LM_STUDIO_API_KEY
+from config import (
+    LM_STUDIO_BASE_URL,
+    LM_STUDIO_CHAT_ENDPOINT,
+    LM_STUDIO_MODEL,
+    LM_STUDIO_TIMEOUT,
+    LM_STUDIO_API_KEY,
+)
 
 
 class LMStudioError(Exception):
@@ -37,11 +43,18 @@ class LMStudioClient:
         api_key: Optional[str] = None,
         timeout: Optional[int] = None,
         default_model: Optional[str] = None,
+        chat_endpoint: Optional[str] = None,
     ):
         self.base_url = (base_url or LM_STUDIO_BASE_URL).rstrip("/")
         self.api_key = api_key or LM_STUDIO_API_KEY
         self.timeout = timeout or LM_STUDIO_TIMEOUT
         self.default_model = default_model if default_model is not None else LM_STUDIO_MODEL
+        if chat_endpoint:
+            self.chat_endpoint = chat_endpoint
+        elif base_url:
+            self.chat_endpoint = f"{self.base_url}/chat/completions"
+        else:
+            self.chat_endpoint = LM_STUDIO_CHAT_ENDPOINT or f"{self.base_url}/chat/completions"
 
     def _headers(self) -> Dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -122,7 +135,7 @@ class LMStudioClient:
             available = self.get_models()
             chosen_model = available[0] if available else "local-model"
 
-        url = f"{self.base_url}/chat/completions"
+        url = self.chat_endpoint or f"{self.base_url}/chat/completions"
         payload = {
             "model": chosen_model,
             "messages": messages,
@@ -143,7 +156,8 @@ class LMStudioClient:
             choices = data.get("choices", [])
             if not choices:
                 raise LMStudioAPIError("LM Studio returned empty choices.")
-            content = choices[0].get("message", {}).get("content", "")
+            raw_content = choices[0].get("message", {}).get("content", "")
+            content = str(raw_content) if raw_content is not None else ""
             return content.strip()
         except requests.exceptions.Timeout:
             raise LMStudioTimeoutError(

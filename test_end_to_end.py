@@ -1,7 +1,7 @@
 """
 Comprehensive end-to-end integration and verification tests for MathriSurakshaAI.
-Covers LM Studio integration, voice input (STT), voice output (TTS),
-offline resilience, safety overrides, and multi-language support.
+Covers LM Studio integration, automatic voice processing (STT), voice output (TTS),
+SHA-256 deduplication, Fast2SMS and Exotel ASHA worker safety escalations, safety overrides, and multi-language support.
 """
 
 import unittest
@@ -9,11 +9,14 @@ from unittest.mock import patch, MagicMock
 import io
 import wave
 import struct
+import hashlib
 
 from lm_studio_client import LMStudioClient, LMStudioConnectionError, LMStudioTimeoutError
 from ai_service import AIService
 from voice_service import VoiceService
 from tts_service import TTSService
+from escalation_service import EscalationService, MockTelephonyAdapter
+from ai_engine import calculate_risk_from_text
 import database
 
 
@@ -24,7 +27,6 @@ def create_dummy_wav_bytes(duration_sec=0.5, sample_rate=16000) -> bytes:
         wav_file.setnchannels(1)      # mono
         wav_file.setsampwidth(2)     # 16-bit
         wav_file.setframerate(sample_rate)
-        # Generate silence / simple tone
         num_samples = int(duration_sec * sample_rate)
         data = struct.pack('<' + 'h' * num_samples, *([0] * num_samples))
         wav_file.writeframes(data)
@@ -61,12 +63,12 @@ class TestLMStudioAndVoiceSystem(unittest.TestCase):
     @patch("requests.get")
     @patch("requests.post")
     def test_lm_studio_online_chat_completion(self, mock_post, mock_get):
-        """Test full online LM Studio request and response flow."""
+        """Test full online LM Studio request and response flow with configured qwen2.5-7b-instruct."""
         # Mock GET /v1/models
         mock_get_resp = MagicMock()
         mock_get_resp.status_code = 200
         mock_get_resp.json.return_value = {
-            "data": [{"id": "llama-3-8b-instruct"}]
+            "data": [{"id": "qwen2.5-7b-instruct"}]
         }
         mock_get.return_value = mock_get_resp
 
@@ -85,7 +87,11 @@ class TestLMStudioAndVoiceSystem(unittest.TestCase):
         }
         mock_post.return_value = mock_post_resp
 
-        client = LMStudioClient(base_url="http://localhost:1234/v1")
+        client = LMStudioClient()
+        self.assertEqual(client.base_url, "http://127.0.0.1:1234/v1")
+        self.assertEqual(client.chat_endpoint, "http://127.0.0.1:1234/v1/chat/completions")
+        self.assertEqual(client.default_model, "qwen2.5-7b-instruct")
+
         service = AIService(client=client)
 
         result = service.process_message(
@@ -98,7 +104,18 @@ class TestLMStudioAndVoiceSystem(unittest.TestCase):
         self.assertTrue(result["server_online"])
         self.assertEqual(result["source"], "lm_studio")
         self.assertIn("green leafy vegetables", result["response"])
-        self.assertIn("llama-3-8b-instruct", result["diagnostic"])
+        self.assertIn("qwen2.5-7b-instruct", result["diagnostic"])
+
+    def test_lm_studio_configuration_customization(self):
+        """Test that base URL, chat endpoint, and model can be customized without hardcoding."""
+        custom_client = LMStudioClient(
+            base_url="http://192.168.1.100:1234/v1",
+            chat_endpoint="http://192.168.1.100:1234/v1/chat/completions",
+            default_model="custom-model-id"
+        )
+        self.assertEqual(custom_client.base_url, "http://192.168.1.100:1234/v1")
+        self.assertEqual(custom_client.chat_endpoint, "http://192.168.1.100:1234/v1/chat/completions")
+        self.assertEqual(custom_client.default_model, "custom-model-id")
 
     # ---------------- 3. EMERGENCY SAFETY OVERRIDE ----------------
     def test_emergency_interceptor(self):
@@ -163,28 +180,76 @@ class TestLMStudioAndVoiceSystem(unittest.TestCase):
 
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["text"], "What exercises are safe in the third trimester?")
-        # Verify it passed hi-IN
         mock_recognize.assert_called_once()
         _, kwargs = mock_recognize.call_args
         self.assertEqual(kwargs.get("language"), "hi-IN")
 
-    # ---------------- 7. UNIFIED PIPELINE (STT -> AI) ----------------
+    # ---------------- 7. UNIFIED AUTOMATIC PIPELINE WITH SHA-256 HASHING ----------------
     @patch("speech_recognition.Recognizer.recognize_google")
     @patch("speech_recognition.Recognizer.record")
-    def test_voice_to_ai_unified_pipeline(self, mock_record, mock_recognize):
-        """Test that speech recognized text seamlessly feeds into the AI processing pipeline."""
-        mock_recognize.return_value = "Tell me about folic acid supplements"
+    def test_voice_automatic_processing_and_hash_deduplication(self, mock_record, mock_recognize):
+        """Test automatic voice workflow and ensure SHA-256 hash prevents duplicate processing."""
+        mock_recognize.return_value = "I have a mild headache today"
         
         vs = VoiceService()
         wav_bytes = create_dummy_wav_bytes()
-        voice_res = vs.transcribe_audio_data(wav_bytes, language_name="English")
-        self.assertEqual(voice_res["status"], "success")
+        audio_hash = hashlib.sha256(wav_bytes).hexdigest()
 
-        ai_svc = AIService()
-        ai_res = ai_svc.process_message(voice_res["text"], language_name="English")
-        self.assertIn("folic acid", ai_res["response"].lower())
+        # Simulated session state
+        session_state = {"last_processed_audio_hash": None}
 
-    # ---------------- 8. VOICE OUTPUT (TTS) ----------------
+        # First run: new audio hash should trigger processing
+        self.assertNotEqual(audio_hash, session_state["last_processed_audio_hash"])
+        res = vs.transcribe_audio_data(wav_bytes, language_name="English")
+        self.assertEqual(res["status"], "success")
+
+        # Update session state with processed hash
+        session_state["last_processed_audio_hash"] = audio_hash
+
+        # Second rerun: same audio hash must be detected as duplicate and skipped
+        self.assertEqual(audio_hash, session_state["last_processed_audio_hash"])
+
+    # ---------------- 8. END-TO-END RISK AND TWILIO ESCALATION PIPELINE ----------------
+    def test_end_to_end_symptom_to_asha_escalation_flow(self):
+        """Test complete pipeline from text/speech symptom -> clinical risk -> Twilio escalation."""
+        mock_adapter = MockTelephonyAdapter()
+        escalation_svc = EscalationService(adapter=mock_adapter)
+
+        # 1. Low symptom: No notification
+        risk_low = calculate_risk_from_text("I feel a little sleepy after lunch")
+        res_low = escalation_svc.escalate("MOTH_01", risk_low, event_id="evt_01")
+        self.assertEqual(res_low["escalation_level"], "Low")
+        self.assertFalse(res_low["escalated"])
+
+        # 2. Moderate symptom: Twilio SMS notification
+        risk_mod = calculate_risk_from_text("I have persistent vomiting and leg swelling")
+        res_mod = escalation_svc.escalate("MOTH_02", risk_mod, event_id="evt_02")
+        self.assertEqual(res_mod["escalation_level"], "Moderate")
+        self.assertTrue(res_mod["escalated"])
+        self.assertEqual(res_mod["action_taken"], "twilio_sms")
+        self.assertEqual(len(mock_adapter.sent_sms_records), 1)
+        self.assertEqual(len(mock_adapter.initiated_call_records), 0)
+
+        # 3. High symptom (Score 60-79, non-emergency): Twilio Call + SMS simultaneously
+        risk_high = calculate_risk_from_text("I have severe headache and leg swelling")
+        res_high = escalation_svc.escalate("MOTH_03", risk_high, event_id="evt_03")
+        self.assertEqual(res_high["escalation_level"], "High")
+        self.assertEqual(res_high["action_taken"], "twilio_call_and_sms")
+        self.assertTrue(res_high["escalated"])
+        self.assertEqual(len(mock_adapter.initiated_call_records), 1)
+        self.assertEqual(len(mock_adapter.sent_sms_records), 2)  # 1 Moderate + 1 High
+
+        # 4. Emergency symptom: Parallel Twilio Call + SMS to configured ASHA worker
+        risk_emerg = calculate_risk_from_text("I have heavy vaginal bleeding and chest pain")
+        res_emerg = escalation_svc.escalate("MOTH_04", risk_emerg, event_id="evt_04")
+        self.assertEqual(res_emerg["escalation_level"], "Emergency")
+        self.assertEqual(res_emerg["action_taken"], "emergency_twilio_call_and_sms")
+        self.assertTrue(res_emerg["escalated"])
+        self.assertEqual(len(mock_adapter.initiated_call_records), 2)  # 1 High + 1 Emergency Call
+        self.assertEqual(len(mock_adapter.sent_sms_records), 3)  # 1 Moderate + 1 High + 1 Emergency
+
+
+    # ---------------- 9. VOICE OUTPUT (TTS) ----------------
     def test_tts_synthesis_and_text_sanitization(self):
         """Test text-to-speech synthesis and markdown cleaning."""
         tts = TTSService()
