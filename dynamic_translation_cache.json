@@ -1,0 +1,63 @@
+{
+  "Telugu": {
+    "Complete Vital Signs and Ultrasonic Heartbeat Detection": "పూర్తి కీలక సంకేతాలు మరియు అల్ట్రాసోనిక్ హృదయ స్పందన గుర్తింపు",
+    "Emergency SOS Alert": "అత్యవసర SOS హెచ్చరిక",
+    "Baby Weight and Height Tracker": "బేబీ బరువు మరియు ఎత్తు ట్రాకర్",
+    "High Risk Pregnancy Monitoring System": "హై రిస్క్ ప్రెగ్నెన్సీ మానిటరింగ్ సిస్టమ్",
+    "Nutrition and Diet Plan": "న్యూట్రిషన్ మరియు డైట్ ప్లాన్",
+    "ASHA Worker Assigned": "ఆశా వర్కర్‌ని కేటాయించారు"
+  },
+  "Hindi": {
+    "Complete Vital Signs and Ultrasonic Heartbeat Detection": "संपूर्ण महत्वपूर्ण संकेत और अल्ट्रासोनिक दिल की धड़कन का पता लगाना",
+    "Emergency SOS Alert": "आपातकालीन एसओएस चेतावनी",
+    "Baby Weight and Height Tracker": "शिशु का वजन और ऊंचाई ट्रैकर",
+    "High Risk Pregnancy Monitoring System": "उच्च जोखिम गर्भावस्था निगरानी प्रणाली",
+    "Nutrition and Diet Plan": "पोषण एवं आहार योजना",
+    "ASHA Worker Assigned": "आशा कार्यकर्ता को नियुक्त किया गया"
+  },
+  "French": {
+    "High Risk Alert: Immediate Intervention Required": "Alerte à risque élevé : intervention immédiate requise"
+  },
+  "Tamil": {
+    "Emergency SOS Alert": "அவசர SOS எச்சரிக்கை",
+    "Baby Weight and Height Tracker": "குழந்தை எடை மற்றும் உயரம் கண்காணிப்பாளர்",
+    "High Risk Pregnancy Monitoring System": "உயர் ஆபத்து கர்ப்ப கண்காணிப்பு அமைப்பு",
+    "Nutrition and Diet Plan": "ஊட்டச்சத்து மற்றும் உணவுத் திட்டம்",
+    "ASHA Worker Assigned": "ஆஷா பணியாளர் நியமிக்கப்பட்டார்"
+  },
+  "Kannada": {
+    "Emergency SOS Alert": "ತುರ್ತು SOS ಎಚ್ಚರಿಕೆ",
+    "Baby Weight and Height Tracker": "ಮಗುವಿನ ತೂಕ ಮತ್ತು ಎತ್ತರ ಟ್ರ್ಯಾಕರ್",
+    "High Risk Pregnancy Monitoring System": "ಹೈ ರಿಸ್ಕ್ ಪ್ರೆಗ್ನೆನ್ಸಿ ಮಾನಿಟರಿಂಗ್ ಸಿಸ್ಟಮ್",
+    "Nutrition and Diet Plan": "ಪೋಷಣೆ ಮತ್ತು ಆಹಾರ ಯೋಜನೆ",
+    "ASHA Worker Assigned": "ಆಶಾ ಕಾರ್ಯಕರ್ತೆಯನ್ನು ನಿಯೋಜಿಸಲಾಗಿದೆ"
+  },
+  "Bengali": {
+    "Emergency SOS Alert": "জরুরী SOS সতর্কতা",
+    "Baby Weight and Height Tracker": "শিশুর ওজন এবং উচ্চতা ট্র্যাকার",
+    "High Risk Pregnancy Monitoring System": "উচ্চ ঝুঁকি গর্ভাবস্থা পর্যবেক্ষণ সিস্টেম",
+    "Nutrition and Diet Plan": "পুষ্টি এবং খাদ্য পরিকল্পনা",
+    "ASHA Worker Assigned": "আশা কর্মী নিয়োগ"
+  },
+  "Marathi": {
+    "Emergency SOS Alert": "आणीबाणी SOS अलर्ट",
+    "Baby Weight and Height Tracker": "बाळाचे वजन आणि उंची ट्रॅकर",
+    "High Risk Pregnancy Monitoring System": "उच्च जोखीम गर्भधारणा देखरेख प्रणाली",
+    "Nutrition and Diet Plan": "पोषण आणि आहार योजना",
+    "ASHA Worker Assigned": "आशा कार्यकर्त्याची नियुक्ती"
+  },
+  "Gujarati": {
+    "Emergency SOS Alert": "કટોકટી એસઓએસ ચેતવણી",
+    "Baby Weight and Height Tracker": "બાળકનું વજન અને ઊંચાઈ ટ્રેકર",
+    "High Risk Pregnancy Monitoring System": "ઉચ્ચ જોખમ ગર્ભાવસ્થા મોનીટરીંગ સિસ્ટમ",
+    "Nutrition and Diet Plan": "પોષણ અને આહાર યોજના",
+    "ASHA Worker Assigned": "ASHA કાર્યકર સોંપેલ"
+  },
+  "Spanish": {
+    "Emergency SOS Alert": "Alerta SOS de emergencia",
+    "Baby Weight and Height Tracker": "Rastreador de peso y altura del bebé",
+    "High Risk Pregnancy Monitoring System": "Sistema de seguimiento de embarazos de alto riesgo",
+    "Nutrition and Diet Plan": "Plan de Nutrición y Dieta",
+    "ASHA Worker Assigned": "Trabajador de ASHA asignado"
+  }
+}
