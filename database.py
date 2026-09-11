@@ -230,8 +230,8 @@ def get_all_mothers():
 
 # ---------------- GET ASHA PHONE ----------------
 def get_asha_phone(village):
-    """Retrieve an ASHA worker's phone number. Hardcoded to 8179245840 for demo."""
-    return "8179245840"
+    """Retrieve an ASHA worker's phone number."""
+    return os.environ.get("ASHA_WORKER_PHONE", "7075287040")
 
 
 # ---------------- UPDATE LOCATION ----------------

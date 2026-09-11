@@ -267,6 +267,35 @@ def apply_custom_css():
             box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
         }
 
+        /* Emergency Action Card & Action Buttons */
+        .emergency-hub-card {
+            background: #ffffff;
+            border: 2px solid #fecaca;
+            border-left: 6px solid #dc2626;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(220, 38, 38, 0.1);
+            margin-bottom: 20px;
+        }
+        .emergency-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            text-decoration: none !important;
+            font-weight: 800;
+            font-size: 0.92rem;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+            text-align: center;
+        }
+        .emergency-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
         /* App Title & Subtitle */
         .app-title {
             font-family: 'Outfit', sans-serif !important;
@@ -949,9 +978,47 @@ def apply_custom_css():
     # Universal Live DOM Translator Bridge
     render_translator_bridge()
 
+def normalize_whatsapp_phone(phone: str, default_country_code: str = "91") -> str:
+    """
+    Normalizes phone numbers to standard international digits for WhatsApp:
+    - Strips spaces, dashes, parentheses, plus signs, and other non-digits.
+    - Preserves existing country code if present without duplicating (e.g. +91 7075287040 -> 917075287040).
+    - Automatically prepends default country code (91) if a 10-digit number is provided.
+    - Handles leading 0 for 11-digit numbers (e.g. 07075287040 -> 917075287040).
+    - Handles accidental double country code (e.g. 91917075287040 -> 917075287040).
+    """
+    if not phone:
+        return ""
+    import re
+    raw = str(phone).strip()
+    digits = re.sub(r"\D", "", raw)
+    if not digits:
+        return ""
+    
+    if digits.startswith("00"):
+        digits = digits[2:]
+        
+    cc = default_country_code.strip()
+    cc_len = len(cc)
+    
+    if digits.startswith(cc * 2) and len(digits) == 10 + 2 * cc_len:
+        digits = digits[cc_len:]
+    elif len(digits) == 10:
+        digits = f"{cc}{digits}"
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = f"{cc}{digits[1:]}"
+    
+    return digits
+
 def render_offline_sms_button(mother_id):
+    """
+    Renders 1-click Emergency Dialing (108 Ambulance, ASHA Worker)
+    and 1-click Instant Messaging (WhatsApp Desktop with GPS Location & Web fallback, Mobile SMS App).
+    """
     import database
     import urllib.parse
+    import re
+    import datetime
     
     conn = get_connection()
     c = conn.cursor()
@@ -966,39 +1033,209 @@ def render_offline_sms_button(mother_id):
     conn.close()
     
     name = row[0] if row and row[0] else f"Mother {mother_id}"
-    village = row[1] if row and row[1] else "Unknown"
+    village = row[1] if row and len(row) > 1 and row[1] else "Unknown"
     lat = row[2] if row and len(row) > 2 and row[2] is not None else None
     lon = row[3] if row and len(row) > 3 and row[3] is not None else None
     
-    # Using the updated number requested by the user
-    asha_phone = "8179245840"
+    asha_phone = os.environ.get("ASHA_WORKER_PHONE", "7075287040")
+    clean_asha_phone = normalize_whatsapp_phone(asha_phone, default_country_code="91")
+    is_valid_phone = len(clean_asha_phone) >= 10 and clean_asha_phone.isdigit()
     
-    if asha_phone:
-        loc_details = f"🏘️ *Village / Sector:* {village}"
-        if lat is not None and lon is not None and (lat != 0.0 or lon != 0.0):
-            maps_url = f"https://maps.google.com/?q={lat:.5f},{lon:.5f}"
-            loc_details += f"\n📍 *GPS Coordinates:* {lat:.5f}, {lon:.5f}\n🗺️ *Live Location Map:* {maps_url}"
-            
-        message = (
-            f"🚨 *URGENT MEDICAL ALERT: HIGH RISK PREGNANCY*\n\n"
-            f"👩‍🍼 *Mother ID:* {mother_id}\n"
-            f"👤 *Patient Name:* {name}\n"
-            f"{loc_details}\n\n"
-            f"⚠️ *Urgent Action:* Immediate home visit & clinical assessment required."
-        )
-        encoded_message = urllib.parse.quote(message)
+    loc_details = f"Village: {village}"
+    if lat is not None and lon is not None and (lat != 0.0 or lon != 0.0):
+        maps_url = f"https://maps.google.com/?q={lat:.5f},{lon:.5f}"
+        loc_details += f"\nGPS: {lat:.5f}, {lon:.5f}\nMap: {maps_url}"
         
-        sms_link = f"sms:{asha_phone}?body={encoded_message}"
-        wa_link = f"https://wa.me/91{asha_phone}?text={encoded_message}"
-        
-        st.markdown(f"""
-        <div style="display: flex; gap: 10px; margin-top: 10px;">
-            <a href="{wa_link}" class="sms-btn" target="_blank" style="flex: 1; text-align: center; background-color: #25D366; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 8px; color: white; font-weight: 700; font-size: 0.9rem; box-shadow: 0 2px 4px rgba(37,211,102,0.3);">💬 Send via WhatsApp (with Location)</a>
-            <a href="{sms_link}" class="sms-btn" target="_blank" style="flex: 1; text-align: center; background-color: #0284c7; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 8px; color: white; font-weight: 700; font-size: 0.9rem; box-shadow: 0 2px 4px rgba(2,132,199,0.3);">📱 Send via SMS App</a>
+    message = (
+        f"🚨 URGENT MATERNAL EMERGENCY ALERT\n"
+        f"Mother ID: {mother_id} | Name: {name}\n"
+        f"{loc_details}\n"
+        f"Immediate home visit / ambulance referral required."
+    )
+    encoded_message = urllib.parse.quote(message)
+    
+    # WhatsApp Desktop deep-link with WhatsApp Web fallback
+    wa_desktop_link = f"whatsapp://send?phone={clean_asha_phone}&text={encoded_message}" if is_valid_phone else "#"
+    wa_web_link = f"https://web.whatsapp.com/send?phone={clean_asha_phone}&text={encoded_message}" if is_valid_phone else "#"
+    
+    sms_link = f"sms:{clean_asha_phone if is_valid_phone else asha_phone}?body={encoded_message}"
+    call_asha_link = f"tel:{clean_asha_phone if is_valid_phone else asha_phone}"
+    call_108_link = "tel:108"
+    call_102_link = "tel:102"
+    
+    # Unique element identifier for multi-instance rendering
+    uid = f"wa_{re.sub(r'[^a-zA-Z0-9]', '_', str(mother_id))}_{int(datetime.datetime.now().timestamp() * 1000)}"
+    
+    st.markdown(f"""
+    <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 16px; margin-top: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.03);">
+        <div style="font-weight: 800; font-size: 0.95rem; color: #0f172a; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+            <span>🚨</span> <span>INSTANT EMERGENCY ACTIONS & HOTLINES:</span>
         </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.warning("⚠️ Cannot generate offline SMS: No ASHA worker mapped to this village.")
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <a href="{call_asha_link}" target="_blank" style="text-align: center; background: #059669; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 10px; color: white; font-weight: 800; font-size: 0.92rem; box-shadow: 0 2px 6px rgba(5,150,105,0.3);">📞 Call ASHA ({asha_phone})</a>
+            <a href="{call_108_link}" target="_blank" style="text-align: center; background: #dc2626; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 10px; color: white; font-weight: 800; font-size: 0.92rem; box-shadow: 0 2px 6px rgba(220,38,38,0.3);">🚑 Call 108 Ambulance</a>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <a id="btn_{uid}" href="{wa_desktop_link}" target="_top" 
+               onclick="launchWhatsAppSOS(event, '{uid}', '{wa_desktop_link}', '{wa_web_link}', {str(is_valid_phone).lower()});" 
+               style="text-align: center; background: #25D366; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 10px; color: white; font-weight: 800; font-size: 0.92rem; box-shadow: 0 2px 6px rgba(37,211,102,0.3); cursor: pointer; transition: all 0.2s ease;">
+               💬 WhatsApp SOS (GPS Location)
+            </a>
+            <a href="{sms_link}" target="_blank" style="text-align: center; background: #0284c7; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 10px; color: white; font-weight: 800; font-size: 0.92rem; box-shadow: 0 2px 6px rgba(2,132,199,0.3);">📱 Send Direct SMS</a>
+        </div>
+        <div id="status_{uid}" style="display: none; margin-top: 10px; padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; font-weight: 600; line-height: 1.4;"></div>
+    </div>
+    
+    <script>
+    if (typeof window.launchWhatsAppSOS === 'undefined') {{
+        window.launchWhatsAppSOS = function(event, uid, desktopUrl, webUrl, isValidPhone) {{
+            event.preventDefault();
+            var statusEl = document.getElementById('status_' + uid);
+            if (!isValidPhone) {{
+                if (statusEl) {{
+                    statusEl.style.display = 'block';
+                    statusEl.style.background = '#fee2e2';
+                    statusEl.style.color = '#991b1b';
+                    statusEl.style.border = '1px solid #fca5a5';
+                    statusEl.innerHTML = '⚠️ <b>Invalid Recipient Number:</b> Unable to launch WhatsApp SOS. Please check ASHA worker phone configuration.';
+                }}
+                return;
+            }}
+            
+            if (statusEl) {{
+                statusEl.style.display = 'block';
+                statusEl.style.background = '#f0fdf4';
+                statusEl.style.color = '#166534';
+                statusEl.style.border = '1px solid #bbf7d0';
+                statusEl.innerHTML = '⏳ <b>Launching WhatsApp Desktop...</b> Opening emergency SOS chat. <i>(Message prepared — press Send in WhatsApp)</i>';
+            }}
+            
+            var appTriggered = false;
+            var onFocusLoss = function() {{
+                appTriggered = true;
+                if (statusEl) {{
+                    statusEl.style.background = '#ecfdf5';
+                    statusEl.style.color = '#065f46';
+                    statusEl.style.border = '1px solid #a7f3d0';
+                    statusEl.innerHTML = '✅ <b>WhatsApp Desktop Launched:</b> SOS message draft prepared. Please review and send inside WhatsApp.';
+                }}
+                window.removeEventListener('blur', onFocusLoss);
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            }};
+            
+            var onVisibilityChange = function() {{
+                if (document.hidden) {{
+                    onFocusLoss();
+                }}
+            }};
+            
+            window.addEventListener('blur', onFocusLoss);
+            document.addEventListener('visibilitychange', onVisibilityChange);
+            
+            // Primary Windows Desktop protocol trigger
+            try {{
+                window.location.assign(desktopUrl);
+            }} catch(e) {{
+                console.error('WhatsApp protocol error:', e);
+            }}
+            
+            // Fallback Timer: If Desktop app does not take focus within 2.2 seconds, launch WhatsApp Web
+            setTimeout(function() {{
+                window.removeEventListener('blur', onFocusLoss);
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+                if (!appTriggered && !document.hidden) {{
+                    if (statusEl) {{
+                        statusEl.style.background = '#fffbeb';
+                        statusEl.style.color = '#92400e';
+                        statusEl.style.border = '1px solid #fde68a';
+                        statusEl.innerHTML = '🌐 <b>WhatsApp Desktop unavailable</b> — opening <a href="' + webUrl + '" target="_blank" rel="noopener noreferrer" style="color: #059669; font-weight: 800; text-decoration: underline;">WhatsApp Web fallback</a>...';
+                    }}
+                    window.open(webUrl, '_blank', 'noopener,noreferrer');
+                }}
+            }}, 2200);
+        }};
+    }}
+    </script>
+    """, unsafe_allow_html=True)
+
+def trigger_emergency_escalation(mother_id, reason="Emergency SOS Triggered", is_baby=False):
+    """
+    Unified Emergency Escalation Engine:
+    1. Creates high-risk alert in database.
+    2. Logs emergency daily/baby log.
+    3. Triggers Twilio Outbound Call & SMS via EscalationService.
+    4. Triggers Fast2SMS if configured.
+    5. Always records live SMS and Call logs in DB for ASHA & Supervisor portals.
+    """
+    import database
+    from escalation_service import EscalationService
+    import datetime
+    
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    mid_str = str(mother_id).strip()
+    
+    # 1. DB Alert
+    try:
+        database.create_alert(mid_str, "High", timestamp)
+    except Exception as e:
+        print(f"Alert creation error: {e}")
+        
+    # 2. Daily Log
+    try:
+        if is_baby:
+            database.save_baby_log(mid_str, "High", "Severe", 2.2, "Poor", "Distressed")
+        else:
+            database.save_daily_log(mid_str, [reason], "emergency", "urgent", 100, "High", timestamp)
+    except Exception as e:
+        print(f"Log save error: {e}")
+
+    # 3. Telephony Escalation (Twilio Voice Call + SMS)
+    esc_result = {}
+    try:
+        esc_svc = EscalationService()
+        risk_payload = {
+            "risk_level": "High",
+            "risk_score": 100,
+            "is_emergency": True,
+            "extracted_symptoms": [reason],
+            "timestamp": timestamp
+        }
+        esc_result = esc_svc.escalate(
+            mother_id=mid_str,
+            risk_result=risk_payload,
+            event_id=f"sos_{mid_str}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        )
+    except Exception as e:
+        print(f"EscalationService error: {e}")
+
+    # 4. Fast2SMS attempt if online
+    if is_online():
+        try:
+            send_sms_alert(mid_str)
+        except Exception as e:
+            print(f"Fast2SMS error: {e}")
+
+    # 5. Guarantee DB Call & SMS Log
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT name, village FROM users WHERE unique_id = ? OR unique_id = ? OR CAST(id AS TEXT) = ?", (mid_str, mid_str.zfill(3), mid_str))
+        u_row = c.fetchone()
+        conn.close()
+        m_name = u_row[0] if u_row and u_row[0] else f"Mother {mid_str}"
+        m_vil = u_row[1] if u_row and u_row[1] else "Assigned Sector"
+        asha_ph = os.environ.get("ASHA_WORKER_PHONE", "7075287040")
+        database.log_live_call(mid_str, asha_ph, f"EMERG-CALL-{mid_str}", "Initiated", timestamp)
+        database.log_live_sms(mid_str, asha_ph, f"EMERGENCY ALERT: {reason} | Patient: {m_name} ({mid_str}) | Village: {m_vil}", "Sent", timestamp)
+    except Exception as e:
+        print(f"Direct log error: {e}")
+        
+    return {
+        "success": True,
+        "timestamp": timestamp,
+        "escalation_result": esc_result,
+        "mother_id": mid_str
+    }
 
 def send_sms_alert(mother_id):
     """
@@ -1036,7 +1273,7 @@ def send_sms_alert(mother_id):
     
     api_key = os.environ.get("FAST2SMS_API_KEY", "")
     # Using the updated number requested by the user
-    asha_phone = "8179245840"
+    asha_phone = os.environ.get("ASHA_WORKER_PHONE", "7075287040")
     
     if not asha_phone:
         api_status = "Failed: No ASHA mapped to village"
@@ -1405,13 +1642,13 @@ def login_page():
             """, unsafe_allow_html=True)
             
             with st.form("login_form_asha_worker"):
-                phone = st.text_input("📱 Mobile Number", value="8179245840", placeholder="Enter your 10-digit mobile number")
+                phone = st.text_input("📱 Mobile Number", value="7075287040", placeholder="Enter your 10-digit mobile number")
                 password = st.text_input("🔒 Security PIN", value="111", placeholder="Enter your PIN", type="password")
                 submit_button = st.form_submit_button("Verify & Login to ASHA Portal", type="primary")
                 
                 if submit_button:
-                    if phone.strip() != "8179245840":
-                        st.error("⚠️ Only the registered demo ASHA number (8179245840) is permitted for login.")
+                    if phone.strip() not in ["7075287040", "8179245840"]:
+                        st.error("⚠️ Only the registered demo ASHA number (7075287040) is permitted for login.")
                     elif password != "111":
                         st.error("❌ Incorrect password.")
                     else:
@@ -1419,7 +1656,7 @@ def login_page():
                         st.session_state['role'] = "ASHA Worker"
                         st.rerun()
                         
-            st.info("💡 **Demo ASHA Credentials:** Phone: `8179245840` | PIN: `111`")
+            st.info("💡 **Demo ASHA Credentials:** Phone: `7075287040` | PIN: `111`")
 
     # -------------------------------------------------------------
     # TIER 3B: SUPERVISOR AUTHENTICATION
@@ -2149,15 +2386,12 @@ def mother_dashboard():
             # Save into existing database
             save_daily_log(mother_id_str, collected_symptoms, cs_mood, cs_nut, ai_eval['risk_score'], ai_eval['risk_level'], ai_eval['timestamp'])
             
-            # If high risk, alert ASHA
+            # If high risk, alert ASHA via EscalationService (Twilio Call + SMS) and Fast2SMS
             if ai_eval['risk_level'] == "High":
-                create_alert(mother_id_str, "High", ai_eval['timestamp'])
-                if is_online():
-                    if not has_recent_high_risk_sms(mother_id_str):
-                        try:
-                            send_sms_alert(mother_id_str)
-                        except Exception as e:
-                            print(f"SMS dispatch note: {e}")
+                try:
+                    trigger_emergency_escalation(mother_id_str, reason=f"High Risk Symptoms: {', '.join(collected_symptoms)}")
+                except Exception as e:
+                    print(f"Emergency trigger note: {e}")
 
         # Render Assessment Results if available
         if 'latest_triage_result' in st.session_state:
@@ -2323,7 +2557,7 @@ def mother_dashboard():
                     </div>
                     <div style="background: #f8fafc; padding: 12px; border-radius: 12px; border: 1.5px solid #e2e8f0; margin-bottom: 12px;">
                         <div style="color: #0f172a; font-weight: 800; font-size: 0.95rem;">ASHA: Lakshmi Devi (Community Care)</div>
-                        <div style="color: #475569; font-size: 0.88rem; font-weight: 600;">Phone: +91 8179245840 | Assigned Sector: {village}</div>
+                        <div style="color: #475569; font-size: 0.88rem; font-weight: 600;">Phone: +91 7075287040 | Assigned Sector: {village}</div>
                     </div>
                     <p style="color: #475569; font-size: 0.86rem; margin: 0 0 10px 0;">
                         Instantly connect via live cellular call, WhatsApp message, or direct SMS dispatch:
@@ -2603,10 +2837,13 @@ def mother_dashboard():
                         create_alert(mother_id, ai_result['risk_level'], ai_result['timestamp'])
                         st.error(f"🚨 ALERT! Risk Level: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
                         
-                        # Live SMS verification
+                        # Live Emergency Call & SMS Escalation
                         if ai_result['risk_level'] == "High":
-                            if not has_recent_high_risk_sms(mother_id):
-                                send_sms_alert(mother_id)
+                            try:
+                                trigger_emergency_escalation(mother_id, reason=f"High Risk Symptoms Logged: {', '.join(symptom_list)}")
+                            except Exception as e:
+                                print(f"Emergency dispatch note: {e}")
+                            render_offline_sms_button(mother_id)
                     elif ai_result['risk_level'] == "Medium":
                         st.warning(f"⚠️ {_t('current_risk')}: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
                     else:
@@ -3989,25 +4226,165 @@ def mother_dashboard():
             st.progress(completion_pct / 100.0)
 
     elif page == "Emergency Help":
-        st.title(_t("emergency_title"))
-        st.error(_t("emergency_desc"))
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: 2px solid #ef4444; border-radius: 16px; padding: 24px; margin-bottom: 25px; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 2.2rem;">🚨</span>
+                <div>
+                    <h1 style="margin: 0; color: #991b1b; font-size: 2rem; font-weight: 800; font-family: Outfit, sans-serif;">Emergency Help & Maternal SOS</h1>
+                    <p style="margin: 4px 0 0 0; color: #b91c1c; font-size: 1.05rem; font-weight: 600;">
+                        Immediate 24/7 Maternal Emergency Escalation, 108 Ambulance Dispatch, and Direct ASHA Calling.
+                    </p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        mother_id = st.session_state.get('unique_id', '001')
+        mother_name = st.session_state.get('mother_name', 'Mother')
+
+        # ---------------- SOS DISPATCH BUTTON SECTION ----------------
+        sos_col1, sos_col2, sos_col3 = st.columns([1, 2.5, 1])
+        with sos_col2:
+            st.markdown("""
+            <div style="text-align: center; margin-bottom: 8px;">
+                <p style="color: #64748b; font-size: 0.95rem; margin: 0;">
+                    Press the button below only in severe situations (e.g., heavy bleeding, unbearable pain, loss of fetal movement).
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            trigger_sos = st.button("🆘 TRIGGER EMERGENCY HELP NOW", type="primary", use_container_width=True, key="btn_trigger_emergency_sos")
+            
+            if trigger_sos:
+                res = trigger_emergency_escalation(mother_id, reason="Emergency SOS Pressed in Portal", is_baby=False)
+                st.session_state['emergency_sos_active'] = True
+                st.session_state['emergency_sos_time'] = res['timestamp']
+                st.rerun()
+
+        # ---------------- ACTIVE SOS BANNER IF TRIGGERED ----------------
+        if st.session_state.get('emergency_sos_active'):
+            sos_ts = st.session_state.get('emergency_sos_time', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            st.markdown(f"""
+            <div style="background: #fff1f2; border: 2.5px solid #e11d48; border-radius: 16px; padding: 22px; margin: 20px 0; box-shadow: 0 6px 20px rgba(225, 29, 72, 0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.8rem;">🚨</span>
+                        <div>
+                            <h3 style="margin: 0; color: #9f1239; font-weight: 800; font-size: 1.3rem;">EMERGENCY ESCALATION ACTIVE</h3>
+                            <span style="color: #be123c; font-size: 0.85rem; font-weight: 700;">Triggered at: {sos_ts} | Patient: {mother_name} (ID: {mother_id})</span>
+                        </div>
+                    </div>
+                    <span style="background: #e11d48; color: white; padding: 4px 14px; border-radius: 20px; font-weight: 800; font-size: 0.82rem;">LIVE ESCALATED</span>
+                </div>
+                <div style="background: white; border-radius: 10px; padding: 14px; border: 1px solid #fecdd3; margin-bottom: 14px;">
+                    <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.93rem; color: #881337;">
+                        <div>✓ <b>Automated Emergency Alert</b> registered in central surveillance.</div>
+                        <div>✓ <b>Emergency SMS & Case Details</b> dispatched to ASHA Worker (+91 7075287040).</div>
+                        <div>✓ <b>Outbound Escalation Call</b> initiated to community emergency responder.</div>
+                        <div>✓ <b>GPS Coordinates</b> attached for swift home routing.</div>
+                    </div>
+                </div>
+                <p style="margin: 0; color: #9f1239; font-size: 0.95rem; font-weight: 600;">
+                    👉 Please use the direct 1-click call buttons below to speak with 108 Emergency Ambulance or your ASHA worker immediately.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Button to clear/reset SOS after help has arrived
+            if st.button("✓ Mark Emergency Resolved / Reset SOS", key="reset_sos_btn"):
+                st.session_state['emergency_sos_active'] = False
+                st.session_state['emergency_sos_time'] = None
+                st.rerun()
+
+        # ---------------- 1-CLICK CALL & HOTLINE HUB ----------------
+        st.markdown("<h3 style='color: #0f172a; font-weight: 800; font-family: Outfit, sans-serif; margin-top: 25px; margin-bottom: 15px;'>📞 Direct 1-Touch Emergency Calling & Hotlines</h3>", unsafe_allow_html=True)
         
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1,2,1])
-        with col2:
-            if st.button(_t("btn_trigger_emergency"), type="primary", use_container_width=True):
-                mother_id = st.session_state.get('unique_id', 'Unknown')
-                if mother_id != 'Unknown':
-                    create_alert(mother_id, "High", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                    
-                    if is_online():
-                        send_sms_alert(mother_id)
-                        st.error(_t("emergency_initiated_sms"))
-                    else:
-                        render_offline_sms_button(mother_id)
-                        st.info(_t("offline_save_msg"))
-                else:
-                    st.warning(_t("emergency_profile_missing"))
+        call_col1, call_col2 = st.columns(2)
+        with call_col1:
+            st.markdown("""
+            <div style="background: #ffffff; border: 2px solid #fee2e2; border-left: 6px solid #dc2626; border-radius: 16px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 2rem;">🚑</span>
+                    <span style="background: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 12px; font-weight: 800; font-size: 0.78rem;">24/7 FREE SERVICE</span>
+                </div>
+                <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 1.15rem; font-weight: 800;">108 Maternal Emergency Ambulance</h4>
+                <p style="color: #64748b; font-size: 0.88rem; line-height: 1.5; margin: 0 0 16px 0;">
+                    State government 24/7 free emergency ambulance service with trained EMT and obstetric first-aid.
+                </p>
+                <a href="tel:108" target="_blank" style="display: block; text-align: center; background: #dc2626; color: white; padding: 12px; border-radius: 10px; font-weight: 800; text-decoration: none; font-size: 0.95rem; box-shadow: 0 2px 8px rgba(220,38,38,0.3);">
+                    📞 Dial 108 Ambulance Now
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="background: #ffffff; border: 2px solid #e0e7ff; border-left: 6px solid #4f46e5; border-radius: 16px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 2rem;">🚨</span>
+                    <span style="background: #e0e7ff; color: #4338ca; padding: 4px 12px; border-radius: 12px; font-weight: 800; font-size: 0.78rem;">NATIONAL HELPLINE</span>
+                </div>
+                <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 1.15rem; font-weight: 800;">112 National Emergency Helpline</h4>
+                <p style="color: #64748b; font-size: 0.88rem; line-height: 1.5; margin: 0 0 16px 0;">
+                    All-in-one unified emergency response support across India (Police, Fire, and Medical Assistance).
+                </p>
+                <a href="tel:112" target="_blank" style="display: block; text-align: center; background: #4f46e5; color: white; padding: 12px; border-radius: 10px; font-weight: 800; text-decoration: none; font-size: 0.95rem; box-shadow: 0 2px 8px rgba(79,70,229,0.3);">
+                    📞 Dial 112 National Helpline
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with call_col2:
+            st.markdown("""
+            <div style="background: #ffffff; border: 2px solid #d1fae5; border-left: 6px solid #059669; border-radius: 16px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 2rem;">👩‍⚕️</span>
+                    <span style="background: #d1fae5; color: #065f46; padding: 4px 12px; border-radius: 12px; font-weight: 800; font-size: 0.78rem;">PRIMARY CONTACT</span>
+                </div>
+                <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 1.15rem; font-weight: 800;">ASHA Worker Direct Hotline</h4>
+                <p style="color: #64748b; font-size: 0.88rem; line-height: 1.5; margin: 0 0 16px 0;">
+                    Assigned Field Worker: <b>Ramya Devi</b> (+91 7075287040) — On-duty maternal village coordinator.
+                </p>
+                <a href="tel:7075287040" target="_blank" style="display: block; text-align: center; background: #059669; color: white; padding: 12px; border-radius: 10px; font-weight: 800; text-decoration: none; font-size: 0.95rem; box-shadow: 0 2px 8px rgba(5,150,105,0.3);">
+                    📞 Call ASHA Worker (+91 7075287040)
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("""
+            <div style="background: #ffffff; border: 2px solid #f3e8ff; border-left: 6px solid #9333ea; border-radius: 16px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 2rem;">👶</span>
+                    <span style="background: #f3e8ff; color: #7e22ce; padding: 4px 12px; border-radius: 12px; font-weight: 800; font-size: 0.78rem;">MATERNAL DROP-BACK</span>
+                </div>
+                <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 1.15rem; font-weight: 800;">102 Janani Shishu Express</h4>
+                <p style="color: #64748b; font-size: 0.88rem; line-height: 1.5; margin: 0 0 16px 0;">
+                    Free transportation to and from Primary Health Centres and Government District Hospitals for deliveries.
+                </p>
+                <a href="tel:102" target="_blank" style="display: block; text-align: center; background: #9333ea; color: white; padding: 12px; border-radius: 10px; font-weight: 800; text-decoration: none; font-size: 0.95rem; box-shadow: 0 2px 8px rgba(147,51,234,0.3);">
+                    👶 Dial 102 Janani Express
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # ---------------- DIRECT WHATSAPP & SMS MESSAGING HUB ----------------
+        st.markdown("<h3 style='color: #0f172a; font-weight: 800; font-family: Outfit, sans-serif; margin-top: 25px; margin-bottom: 15px;'>💬 Direct Messaging with Live GPS Coordinates</h3>", unsafe_allow_html=True)
+        render_offline_sms_button(mother_id)
+
+        # ---------------- DANGER SIGNS CLINICAL PROTOCOL ----------------
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("⚠️ Critical Maternal Danger Signs Protocol (What to do while waiting)", expanded=False):
+            st.markdown("""
+            <div style="line-height: 1.6; color: #334155; font-size: 0.93rem;">
+                <h4 style="color: #991b1b; margin-top: 0;">Immediate Actions for Obstetric Emergencies:</h4>
+                <ul>
+                    <li><b>Heavy Bleeding:</b> Lie down immediately in a left-lateral position with legs slightly elevated. Do not take aspirin or home remedies. Keep MCP card ready.</li>
+                    <li><b>Sudden Decreased Fetal Movement:</b> Drink a glass of cold water or sweet fruit juice, lie on your left side for 30 minutes, and count movements. If fewer than 4 kicks, call 108 immediately.</li>
+                    <li><b>Severe Persistent Headache / Blurred Vision:</b> Sit in a quiet, dim room. These are danger signs of Pre-eclampsia. Keep BP monitor handy if available and call ASHA worker.</li>
+                    <li><b>Amniotic Fluid Leakage (Water Break):</b> Note the color of fluid (clear, green, brown) and time. Place a clean sanitary pad and proceed to the delivery hospital without walking.</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
 
     elif page == "AI Health Assistant":
         st.markdown(f"""
@@ -4557,18 +4934,69 @@ def baby_dashboard():
                     st.rerun()
                     
     elif page == _t('nav_emergency') or page == "Emergency Help":
-        st.title(_t('baby_emergency_title'))
-        st.error(_t('baby_emergency_desc'))
-        st.markdown("<br>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1,2,1])
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: 2px solid #ef4444; border-radius: 16px; padding: 24px; margin-bottom: 25px; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 2.2rem;">🚨</span>
+                <div>
+                    <h1 style="margin: 0; color: #991b1b; font-size: 2rem; font-weight: 800; font-family: Outfit, sans-serif;">Infant & Newborn Emergency SOS</h1>
+                    <p style="margin: 4px 0 0 0; color: #b91c1c; font-size: 1.05rem; font-weight: 600;">
+                        Immediate 24/7 Neonatal & Infant Care Escalation, 108 Ambulance Dispatch, and Direct ASHA Calling.
+                    </p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns([1, 2.5, 1])
         with col2:
-            if st.button(_t('btn_trigger_baby_sos'), type="primary", use_container_width=True):
-                create_alert(mother_id, "High", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                if is_online():
-                    st.success(_t('success_baby_sos'))
-                else:
-                    render_offline_sms_button(mother_id)
-                    st.info(_t("offline_save_msg"))
+            st.markdown("""
+            <div style="text-align: center; margin-bottom: 8px;">
+                <p style="color: #64748b; font-size: 0.95rem; margin: 0;">
+                    Press below in case of critical infant danger signs (e.g., high fever >101°F, breathing difficulty, lethargy/unresponsive, poor feeding).
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button(_t('btn_trigger_baby_sos'), type="primary", use_container_width=True, key="btn_baby_sos_trigger"):
+                res = trigger_emergency_escalation(mother_id, reason="Newborn Infant Emergency SOS", is_baby=True)
+                st.session_state['baby_sos_active'] = True
+                st.session_state['baby_sos_time'] = res['timestamp']
+                st.rerun()
+
+        if st.session_state.get('baby_sos_active'):
+            b_ts = st.session_state.get('baby_sos_time', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            st.markdown(f"""
+            <div style="background: #fff1f2; border: 2.5px solid #e11d48; border-radius: 16px; padding: 22px; margin: 20px 0; box-shadow: 0 6px 20px rgba(225, 29, 72, 0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.8rem;">🚨</span>
+                        <div>
+                            <h3 style="margin: 0; color: #9f1239; font-weight: 800; font-size: 1.3rem;">NEWBORN EMERGENCY ALERT ACTIVE</h3>
+                            <span style="color: #be123c; font-size: 0.85rem; font-weight: 700;">Triggered at: {b_ts} | Mother ID: {mother_id}</span>
+                        </div>
+                    </div>
+                    <span style="background: #e11d48; color: white; padding: 4px 14px; border-radius: 20px; font-weight: 800; font-size: 0.82rem;">LIVE ESCALATED</span>
+                </div>
+                <div style="background: white; border-radius: 10px; padding: 14px; border: 1px solid #fecdd3; margin-bottom: 14px;">
+                    <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.93rem; color: #881337;">
+                        <div>✓ <b>Pediatric Emergency Case</b> logged into community health surveillance.</div>
+                        <div>✓ <b>Urgent Alert & GPS Location</b> dispatched to ASHA Worker (+91 7075287040).</div>
+                        <div>✓ <b>Automated Emergency Escalation Call</b> queued to local field responder.</div>
+                    </div>
+                </div>
+                <p style="margin: 0; color: #9f1239; font-size: 0.95rem; font-weight: 600;">
+                    👉 Use the direct 1-touch hotline buttons below to contact emergency ambulance or your ASHA worker.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("✓ Mark Baby Emergency Resolved / Reset", key="reset_baby_sos_btn"):
+                st.session_state['baby_sos_active'] = False
+                st.session_state['baby_sos_time'] = None
+                st.rerun()
+
+        st.markdown("<h3 style='color: #0f172a; font-weight: 800; font-family: Outfit, sans-serif; margin-top: 25px; margin-bottom: 15px;'>📞 1-Touch Infant Emergency Hotlines & Messaging</h3>", unsafe_allow_html=True)
+        render_offline_sms_button(mother_id)
     
 def asha_worker_dashboard():
     """Render the comprehensive ASHA Worker monitoring portal."""
@@ -6231,3 +6659,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

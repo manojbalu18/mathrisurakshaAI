@@ -6,6 +6,7 @@ with clean text sanitization and multi-language support.
 
 import io
 import re
+from typing import Optional
 try:
     from gtts import gTTS
     GTTS_AVAILABLE = True

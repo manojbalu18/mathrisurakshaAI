@@ -92,7 +92,7 @@ Guidelines:
 
 # ---------------- ASHA WORKER & ESCALATION CONFIGURATION ----------------
 ASHA_WORKER_NAME = os.environ.get("ASHA_WORKER_NAME", "RAMYA")
-ASHA_WORKER_PHONE = os.environ.get("ASHA_WORKER_PHONE", "")
+ASHA_WORKER_PHONE = os.environ.get("ASHA_WORKER_PHONE", "7075287040")
 ASHA_ESCALATION_ENABLED = os.environ.get("ASHA_ESCALATION_ENABLED", "true").lower() in ["true", "1", "yes"]
 
 # ---------------- TWILIO TELEPHONY CONFIGURATION ----------------

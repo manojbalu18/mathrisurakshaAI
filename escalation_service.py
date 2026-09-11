@@ -9,7 +9,7 @@ and Full Production Mode (dynamic maternal emergency messages & custom TwiML).
 import os
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, Set, List
+from typing import Dict, Any, Optional, Set, List, Union
 
 try:
     from twilio.rest import Client
@@ -35,6 +35,42 @@ from database import log_live_sms, log_live_call
 logger = logging.getLogger(__name__)
 
 
+# ---------------- STANDARDIZED RESULT BUILDER ----------------
+def create_telephony_result(
+    service: str,
+    success: bool,
+    status: str,
+    error_type: Optional[str] = None,
+    message: Optional[str] = None,
+    provider_error_code: Optional[Union[int, str]] = None,
+    message_id: Optional[str] = None,
+    call_id: Optional[str] = None,
+    error: Optional[str] = None,
+    trial_mode: bool = True,
+    provider: str = "twilio",
+    timestamp: Optional[str] = None
+) -> Dict[str, Any]:
+    """Build a consistent, structured communication result dictionary."""
+    ts = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ref_id = message_id or call_id
+    default_msg = "Communication accepted." if success else str(error or "Communication failed.")
+    return {
+        "success": bool(success),
+        "service": str(service),
+        "status": str(status),
+        "error_type": str(error_type or ("none" if success else status)),
+        "message": str(message or default_msg),
+        "provider_error_code": provider_error_code,
+        "provider": str(provider),
+        "trial_mode": bool(trial_mode),
+        "message_id": message_id,
+        "call_id": call_id,
+        "provider_ref": ref_id,
+        "error": error,
+        "timestamp": ts
+    }
+
+
 # ---------------- BASE TELEPHONY ADAPTER ----------------
 class BaseTelephonyAdapter:
     """Base interface for telephony providers (SMS and Voice Calling)."""
@@ -57,66 +93,74 @@ class MockTelephonyAdapter(BaseTelephonyAdapter):
         self.initiated_call_records = []
 
     def send_sms(self, to_phone: str, message: str) -> Dict[str, Any]:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if self.should_fail_sms:
-            return {
-                "success": False,
-                "status": "failed",
-                "provider": "mock",
-                "trial_mode": False,
-                "message_id": None,
-                "provider_ref": None,
-                "error": "Simulated SMS provider rejection",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            return create_telephony_result(
+                service="sms",
+                success=False,
+                status="failed",
+                error_type="simulated_failure",
+                message="Simulated SMS provider rejection",
+                error="Simulated SMS provider rejection",
+                provider="mock",
+                trial_mode=False,
+                timestamp=ts
+            )
 
+        ref = f"mock-sms-{len(self.sent_sms_records) + 1}"
         record = {
             "to": to_phone,
             "message": message,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "provider_ref": f"mock-sms-{len(self.sent_sms_records) + 1}"
+            "timestamp": ts,
+            "provider_ref": ref
         }
         self.sent_sms_records.append(record)
-        return {
-            "success": True,
-            "status": "accepted",
-            "provider": "mock",
-            "trial_mode": False,
-            "message_id": record["provider_ref"],
-            "provider_ref": record["provider_ref"],
-            "error": None,
-            "timestamp": record["timestamp"]
-        }
+        return create_telephony_result(
+            service="sms",
+            success=True,
+            status="accepted",
+            error_type="none",
+            message="Mock SMS delivered successfully.",
+            message_id=ref,
+            provider="mock",
+            trial_mode=False,
+            timestamp=ts
+        )
 
     def initiate_call(self, to_phone: str, message: str) -> Dict[str, Any]:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if self.should_fail_call:
-            return {
-                "success": False,
-                "status": "failed",
-                "provider": "mock",
-                "trial_mode": False,
-                "call_id": None,
-                "provider_ref": None,
-                "error": "Simulated Voice Call provider failure",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            return create_telephony_result(
+                service="call",
+                success=False,
+                status="failed",
+                error_type="simulated_failure",
+                message="Simulated Voice Call provider failure",
+                error="Simulated Voice Call provider failure",
+                provider="mock",
+                trial_mode=False,
+                timestamp=ts
+            )
 
+        ref = f"mock-call-{len(self.initiated_call_records) + 1}"
         record = {
             "to": to_phone,
             "message": message,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "provider_ref": f"mock-call-{len(self.initiated_call_records) + 1}"
+            "timestamp": ts,
+            "provider_ref": ref
         }
         self.initiated_call_records.append(record)
-        return {
-            "success": True,
-            "status": "initiated",
-            "provider": "mock",
-            "trial_mode": False,
-            "call_id": record["provider_ref"],
-            "provider_ref": record["provider_ref"],
-            "error": None,
-            "timestamp": record["timestamp"]
-        }
+        return create_telephony_result(
+            service="call",
+            success=True,
+            status="initiated",
+            error_type="none",
+            message="Mock Call initiated successfully.",
+            call_id=ref,
+            provider="mock",
+            trial_mode=False,
+            timestamp=ts
+        )
 
 
 # ---------------- REUSABLE MESSAGE BUILDERS ----------------
@@ -175,7 +219,7 @@ def build_escalation_call_message(
 # ---------------- TWILIO TELEPHONY PROVIDER ----------------
 class TwilioProvider(BaseTelephonyAdapter):
     """
-    Production Twilio Telephony Provider.
+    Production & Trial Twilio Telephony Provider.
     Supports both Twilio Trial Mode (predefined template & sample webhook)
     and Production Mode (dynamic SMS text & custom TwiML voice response).
     """
@@ -245,17 +289,28 @@ class TwilioProvider(BaseTelephonyAdapter):
             os.getenv("TWILIO_TRIAL_VOICE_URL", "https://webhooks.twilio.com/v1/Voice/Template/voice_text_to_speech")
         )
 
+    def validate_configuration(self) -> tuple[bool, str, str]:
+        """
+        Validate Twilio configuration settings.
+        Returns: (is_valid, error_type, description)
+        """
+        placeholders = ["", "your_twilio_account_sid_here", "your_twilio_auth_token_here", "your_twilio_phone_number_here"]
+        sid = (self.account_sid or "").strip()
+        token = (self.auth_token or "").strip()
+        phone = (self.phone_number or "").strip()
+
+        if not sid or sid in placeholders or not token or token in placeholders:
+            return False, "config_missing", "Twilio credentials (TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN) not configured in environment."
+
+        if not phone or phone in placeholders:
+            return False, "invalid_sender", "Twilio sender phone number (TWILIO_PHONE_NUMBER) not configured in environment."
+
+        return True, "none", "Twilio configuration valid."
+
     def is_configured(self) -> bool:
         """Verify that all required Twilio credentials and phone number are present."""
-        placeholders = ["", "your_twilio_account_sid_here", "your_twilio_auth_token_here", "your_twilio_phone_number_here"]
-        sid = self.account_sid
-        token = self.auth_token
-        phone = self.phone_number
-        return bool(
-            sid and sid.strip() not in placeholders and
-            token and token.strip() not in placeholders and
-            phone and phone.strip() not in placeholders
-        )
+        is_valid, _, _ = self.validate_configuration()
+        return is_valid
 
     def _get_client(self) -> Client:
         """Create authenticated Twilio Client."""
@@ -271,53 +326,58 @@ class TwilioProvider(BaseTelephonyAdapter):
         is_trial = self.trial_mode
 
         # 1. Configuration Check
-        if not self.is_configured():
-            logger.warning("Twilio SMS dispatch aborted: Twilio credentials not configured.")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "message_id": None,
-                "status": "config_error",
-                "error": "Twilio credentials or phone number not configured.",
-                "timestamp": ts
-            }
+        is_valid_cfg, cfg_err_type, cfg_err_msg = self.validate_configuration()
+        if not is_valid_cfg:
+            logger.warning(f"Twilio SMS dispatch aborted: {cfg_err_msg}")
+            return create_telephony_result(
+                service="sms",
+                success=False,
+                status="config_error",
+                error_type=cfg_err_type,
+                message=cfg_err_msg,
+                error=cfg_err_msg,
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
-        # 2. Destination and Sender Phone Formatting (E.164)
+        # 2. Destination Phone Formatting (E.164)
         dest_e164 = format_for_twilio(to_phone)
         if not dest_e164:
             masked = mask_phone(to_phone)
             logger.warning(f"Twilio SMS aborted: Invalid recipient phone number '{masked}'.")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "message_id": None,
-                "status": "invalid_phone",
-                "error": f"Invalid recipient phone number format: {masked}",
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="sms",
+                success=False,
+                status="invalid_phone",
+                error_type="invalid_phone",
+                message=f"Invalid recipient phone number format: {masked}",
+                error=f"Invalid recipient phone number format: {masked}",
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
+        # 3. Sender Phone Formatting (E.164)
         from_e164 = format_for_twilio(self.phone_number, default_country_code="+1")
         if not from_e164:
             logger.warning("Twilio SMS aborted: Invalid TWILIO_PHONE_NUMBER sender format.")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "message_id": None,
-                "status": "invalid_sender",
-                "error": "Invalid Twilio sender phone number format.",
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="sms",
+                success=False,
+                status="invalid_sender",
+                error_type="invalid_sender",
+                message="Invalid Twilio sender phone number format in TWILIO_PHONE_NUMBER.",
+                error="Invalid Twilio sender phone number format.",
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
         masked_dest = mask_phone(dest_e164)
         masked_from = mask_phone(from_e164)
 
-        # 3. Payload Selection based on Trial Mode
+        # 4. Payload Selection based on Trial Mode
         sms_body = self.trial_sms_template if is_trial else message
 
-        # 4. Twilio Messages API Execution
+        # 5. Twilio Messages API Execution
         try:
             mode_desc = f"Trial Template '{sms_body}'" if is_trial else "Production Dynamic Body"
             logger.info(f"Dispatching Twilio SMS ({mode_desc}) from {masked_from} to {masked_dest}...")
@@ -331,54 +391,96 @@ class TwilioProvider(BaseTelephonyAdapter):
             msg_sid = getattr(msg, "sid", "accepted")
             msg_status = getattr(msg, "status", "queued")
             logger.info(f"Twilio SMS accepted for {masked_dest} (SID: {msg_sid}, Status: {msg_status}, TrialMode: {is_trial}).")
-            return {
-                "success": True,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "message_id": str(msg_sid),
-                "status": str(msg_status),
-                "error": None,
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="sms",
+                success=True,
+                status=str(msg_status),
+                error_type="none",
+                message=f"Twilio SMS dispatched successfully (SID: {msg_sid}).",
+                message_id=str(msg_sid),
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
         except TwilioRestException as e:
             logger.error(f"Twilio API error sending SMS to {masked_dest} (Code {e.code}): {e.msg}")
             err_text = str(e.msg)
+            code = getattr(e, "code", None)
 
-            # Specific Twilio Trial account restriction detection
-            if e.code in [21608, 21215, 572006] or "unverified" in err_text.lower() or "trial account" in err_text.lower() or "template" in err_text.lower():
-                notice = f"Twilio Trial Notice: {err_text}"
-                return {
-                    "success": False,
-                    "provider": "twilio",
-                    "trial_mode": is_trial,
-                    "message_id": None,
-                    "status": "trial_restriction",
-                    "error": notice,
-                    "timestamp": ts
-                }
+            # Detect unverified recipient in trial account (Codes 572002, 21608, etc.)
+            if code in [572002, 21608] or "verified recipient" in err_text.lower() or "unverified" in err_text.lower():
+                user_msg = (
+                    f"Destination number {masked_dest} is not verified in Twilio. "
+                    f"Trial accounts can only send SMS to Verified Caller IDs. "
+                    f"Please verify {masked_dest} in your Twilio Console (Phone Numbers -> Verified Caller IDs)."
+                )
+                return create_telephony_result(
+                    service="sms",
+                    success=False,
+                    status="unverified_recipient",
+                    error_type="unverified_recipient",
+                    message=user_msg,
+                    provider_error_code=code,
+                    error=f"Twilio Error ({code}): {err_text}",
+                    trial_mode=is_trial,
+                    timestamp=ts
+                )
 
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "message_id": None,
-                "status": "provider_rejected",
-                "error": f"Twilio Error ({e.code}): {err_text}",
-                "timestamp": ts
-            }
+            # Detect general trial account restrictions
+            if code in [21215, 572006] or "trial account" in err_text.lower() or "disallowed parameters" in err_text.lower() or "template" in err_text.lower():
+                user_msg = f"Twilio Trial Restriction: {err_text}. Verify recipient number or upgrade your Twilio account."
+                return create_telephony_result(
+                    service="sms",
+                    success=False,
+                    status="trial_restriction",
+                    error_type="trial_restriction",
+                    message=user_msg,
+                    provider_error_code=code,
+                    error=f"Twilio Trial Notice ({code}): {err_text}",
+                    trial_mode=is_trial,
+                    timestamp=ts
+                )
+
+            # Detect geographic permission restriction
+            if code in [21408] or "permission" in err_text.lower() and "region" in err_text.lower():
+                user_msg = f"Twilio Geo-Permission Restriction: Outbound messaging to {masked_dest} requires enabling Geographic Permissions in Twilio Console."
+                return create_telephony_result(
+                    service="sms",
+                    success=False,
+                    status="geo_permission_restriction",
+                    error_type="geo_permission_restriction",
+                    message=user_msg,
+                    provider_error_code=code,
+                    error=f"Twilio Error ({code}): {err_text}",
+                    trial_mode=is_trial,
+                    timestamp=ts
+                )
+
+            # General provider API rejection
+            return create_telephony_result(
+                service="sms",
+                success=False,
+                status="provider_rejected",
+                error_type="provider_rejected",
+                message=f"Twilio Error ({code}): {err_text}",
+                provider_error_code=code,
+                error=f"Twilio Error ({code}): {err_text}",
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
         except Exception as e:
             logger.error(f"Twilio SMS dispatch exception: {str(e)}")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "message_id": None,
-                "status": "error",
-                "error": str(e),
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="sms",
+                success=False,
+                status="error",
+                error_type="system_error",
+                message=f"SMS dispatch exception: {str(e)}",
+                error=str(e),
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
     def initiate_call(self, to_phone: str, message: str) -> Dict[str, Any]:
         """
@@ -390,50 +492,55 @@ class TwilioProvider(BaseTelephonyAdapter):
         is_trial = self.trial_mode
 
         # 1. Configuration Check
-        if not self.is_configured():
-            logger.warning("Twilio voice call aborted: Twilio credentials not configured.")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "call_id": None,
-                "status": "config_error",
-                "error": "Twilio credentials or phone number not configured.",
-                "timestamp": ts
-            }
+        is_valid_cfg, cfg_err_type, cfg_err_msg = self.validate_configuration()
+        if not is_valid_cfg:
+            logger.warning(f"Twilio voice call aborted: {cfg_err_msg}")
+            return create_telephony_result(
+                service="call",
+                success=False,
+                status="config_error",
+                error_type=cfg_err_type,
+                message=cfg_err_msg,
+                error=cfg_err_msg,
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
-        # 2. Destination and Sender Phone Formatting (E.164)
+        # 2. Destination Phone Formatting (E.164)
         dest_e164 = format_for_twilio(to_phone)
         if not dest_e164:
             masked = mask_phone(to_phone)
             logger.warning(f"Twilio call aborted: Invalid destination phone number '{masked}'.")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "call_id": None,
-                "status": "invalid_phone",
-                "error": f"Invalid recipient phone number format: {masked}",
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="call",
+                success=False,
+                status="invalid_phone",
+                error_type="invalid_phone",
+                message=f"Invalid recipient phone number format: {masked}",
+                error=f"Invalid recipient phone number format: {masked}",
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
+        # 3. Sender Phone Formatting (E.164)
         from_e164 = format_for_twilio(self.phone_number, default_country_code="+1")
         if not from_e164:
             logger.warning("Twilio call aborted: Invalid TWILIO_PHONE_NUMBER caller format.")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "call_id": None,
-                "status": "invalid_sender",
-                "error": "Invalid Twilio caller phone number format.",
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="call",
+                success=False,
+                status="invalid_sender",
+                error_type="invalid_sender",
+                message="Invalid Twilio sender phone number format in TWILIO_PHONE_NUMBER.",
+                error="Invalid Twilio caller phone number format.",
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
         masked_dest = mask_phone(dest_e164)
         masked_from = mask_phone(from_e164)
 
-        # 3. Twilio Calls API Execution
+        # 4. Twilio Calls API Execution
         try:
             client = self._get_client()
             if is_trial:
@@ -460,54 +567,84 @@ class TwilioProvider(BaseTelephonyAdapter):
             call_sid = getattr(call, "sid", "accepted")
             call_status = getattr(call, "status", "queued")
             logger.info(f"Twilio call initiated for {masked_dest} (SID: {call_sid}, Status: {call_status}, TrialMode: {is_trial}).")
-            return {
-                "success": True,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "call_id": str(call_sid),
-                "status": str(call_status),
-                "error": None,
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="call",
+                success=True,
+                status=str(call_status),
+                error_type="none",
+                message=f"Twilio emergency call placed successfully (SID: {call_sid}).",
+                call_id=str(call_sid),
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
         except TwilioRestException as e:
             logger.error(f"Twilio API error placing call to {masked_dest} (Code {e.code}): {e.msg}")
             err_text = str(e.msg)
+            code = getattr(e, "code", None)
 
-            # Specific Twilio Trial account restriction detection
-            if e.code in [21608, 21215] or "unverified" in err_text.lower() or "trial account" in err_text.lower():
-                notice = f"Twilio Trial Notice: {err_text}"
-                return {
-                    "success": False,
-                    "provider": "twilio",
-                    "trial_mode": is_trial,
-                    "call_id": None,
-                    "status": "trial_restriction",
-                    "error": notice,
-                    "timestamp": ts
-                }
+            # Detect unverified recipient in trial account
+            if code in [572002, 21608] or "verified recipient" in err_text.lower() or "unverified" in err_text.lower():
+                user_msg = (
+                    f"Destination number {masked_dest} is not verified in Twilio. "
+                    f"Trial accounts can only call Verified Caller IDs. "
+                    f"Please verify {masked_dest} in your Twilio Console (Phone Numbers -> Verified Caller IDs)."
+                )
+                return create_telephony_result(
+                    service="call",
+                    success=False,
+                    status="unverified_recipient",
+                    error_type="unverified_recipient",
+                    message=user_msg,
+                    provider_error_code=code,
+                    error=f"Twilio Error ({code}): {err_text}",
+                    trial_mode=is_trial,
+                    timestamp=ts
+                )
 
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "call_id": None,
-                "status": "provider_rejected",
-                "error": f"Twilio Error ({e.code}): {err_text}",
-                "timestamp": ts
-            }
+            # Detect trial account restrictions on outbound voice / custom TwiML (Code 0, 21215, etc.)
+            if code in [0, 21215, 21608] or "trial account" in err_text.lower() or "disallowed parameters" in err_text.lower() or "limited parameter access" in err_text.lower():
+                user_msg = (
+                    f"Twilio Trial Restriction: Trial accounts have parameter and outbound calling limitations ({err_text}). "
+                    f"Ensure {masked_dest} is added to Verified Caller IDs or upgrade your Twilio account."
+                )
+                return create_telephony_result(
+                    service="call",
+                    success=False,
+                    status="trial_restriction",
+                    error_type="trial_restriction",
+                    message=user_msg,
+                    provider_error_code=code,
+                    error=f"Twilio Trial Notice ({code}): {err_text}",
+                    trial_mode=is_trial,
+                    timestamp=ts
+                )
+
+            # General provider API rejection
+            return create_telephony_result(
+                service="call",
+                success=False,
+                status="provider_rejected",
+                error_type="provider_rejected",
+                message=f"Twilio Call Error ({code}): {err_text}",
+                provider_error_code=code,
+                error=f"Twilio Error ({code}): {err_text}",
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
         except Exception as e:
             logger.error(f"Twilio call dispatch exception: {str(e)}")
-            return {
-                "success": False,
-                "provider": "twilio",
-                "trial_mode": is_trial,
-                "call_id": None,
-                "status": "error",
-                "error": str(e),
-                "timestamp": ts
-            }
+            return create_telephony_result(
+                service="call",
+                success=False,
+                status="error",
+                error_type="system_error",
+                message=f"Call dispatch exception: {str(e)}",
+                error=str(e),
+                trial_mode=is_trial,
+                timestamp=ts
+            )
 
 
 # ---------------- CENTRAL ESCALATION SERVICE ----------------
@@ -605,7 +742,9 @@ class EscalationService:
                 "error": None
             }
 
-        asha_phone = getattr(config, "ASHA_WORKER_PHONE", os.getenv("ASHA_WORKER_PHONE", ""))
+        asha_phone = getattr(config, "ASHA_WORKER_PHONE", os.getenv("ASHA_WORKER_PHONE", "7075287040"))
+        if not asha_phone or not str(asha_phone).strip():
+            asha_phone = "7075287040"
 
         # ---------------- TIER 1: LOW RISK ----------------
         if risk_level == "Low" and risk_score < 30 and not is_emergency:
@@ -623,13 +762,15 @@ class EscalationService:
             sms_message = build_escalation_sms_message("MEDIUM", risk_score, symptoms, timestamp)
             sms_res = self.sms_adapter.send_sms(asha_phone, sms_message)
 
-            if sms_res.get("success"):
-                self.mark_escalated(event_id)
-                try:
-                    mode_tag = "Trial" if sms_res.get("trial_mode") else "Live"
+            try:
+                mode_tag = "Trial" if sms_res.get("trial_mode") else "Live"
+                if sms_res.get("success"):
+                    self.mark_escalated(event_id)
                     log_live_sms(mother_id, asha_phone, sms_message, f"Success ({mode_tag})", timestamp)
-                except Exception:
-                    pass
+                else:
+                    log_live_sms(mother_id, asha_phone, sms_message, f"Failed: {sms_res.get('status')} ({mode_tag})", timestamp)
+            except Exception:
+                pass
 
             return {
                 "escalated": sms_res.get("success", False),
@@ -647,21 +788,25 @@ class EscalationService:
 
             # 1. Twilio Outbound Emergency Call
             call_res = self.call_adapter.initiate_call(asha_phone, call_message)
-            if call_res.get("success"):
-                try:
-                    mode_tag = "Trial" if call_res.get("trial_mode") else "Live"
+            try:
+                mode_tag = "Trial" if call_res.get("trial_mode") else "Live"
+                if call_res.get("success"):
                     log_live_call(mother_id, asha_phone, call_res.get("call_id", ""), f"{mode_tag}-Initiated", timestamp)
-                except Exception:
-                    pass
+                else:
+                    log_live_call(mother_id, asha_phone, "failed", f"Failed: {call_res.get('status')} ({mode_tag})", timestamp)
+            except Exception:
+                pass
 
             # 2. Twilio Emergency SMS
             sms_res = self.sms_adapter.send_sms(asha_phone, sms_message)
-            if sms_res.get("success"):
-                try:
-                    mode_tag = "Trial" if sms_res.get("trial_mode") else "Live"
+            try:
+                mode_tag = "Trial" if sms_res.get("trial_mode") else "Live"
+                if sms_res.get("success"):
                     log_live_sms(mother_id, asha_phone, sms_message, f"Success ({mode_tag})", timestamp)
-                except Exception:
-                    pass
+                else:
+                    log_live_sms(mother_id, asha_phone, sms_message, f"Failed: {sms_res.get('status')} ({mode_tag})", timestamp)
+            except Exception:
+                pass
 
             if (call_res and call_res.get("success")) or (sms_res and sms_res.get("success")):
                 self.mark_escalated(event_id)
@@ -681,21 +826,25 @@ class EscalationService:
 
         # 1. Twilio Outbound Emergency Call
         call_res = self.call_adapter.initiate_call(asha_phone, call_message)
-        if call_res.get("success"):
-            try:
-                mode_tag = "Trial" if call_res.get("trial_mode") else "Live"
+        try:
+            mode_tag = "Trial" if call_res.get("trial_mode") else "Live"
+            if call_res.get("success"):
                 log_live_call(mother_id, asha_phone, call_res.get("call_id", ""), f"Emergency-{mode_tag}-Initiated", timestamp)
-            except Exception:
-                pass
+            else:
+                log_live_call(mother_id, asha_phone, "failed", f"Emergency-Failed: {call_res.get('status')} ({mode_tag})", timestamp)
+        except Exception:
+            pass
 
         # 2. Twilio Emergency SMS
         sms_res = self.sms_adapter.send_sms(asha_phone, sms_message)
-        if sms_res.get("success"):
-            try:
-                mode_tag = "Trial" if sms_res.get("trial_mode") else "Live"
+        try:
+            mode_tag = "Trial" if sms_res.get("trial_mode") else "Live"
+            if sms_res.get("success"):
                 log_live_sms(mother_id, asha_phone, sms_message, f"Emergency-Success ({mode_tag})", timestamp)
-            except Exception:
-                pass
+            else:
+                log_live_sms(mother_id, asha_phone, sms_message, f"Emergency-Failed: {sms_res.get('status')} ({mode_tag})", timestamp)
+        except Exception:
+            pass
 
         if (call_res and call_res.get("success")) or (sms_res and sms_res.get("success")):
             self.mark_escalated(event_id)
