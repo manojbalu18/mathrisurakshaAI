@@ -1,0 +1,12 @@
+streamlit
+streamlit-folium
+streamlit-geolocation
+geopy
+requests
+folium
+pandas
+plotly
+python-dotenv
+SpeechRecognition
+mtranslate
+gTTS
