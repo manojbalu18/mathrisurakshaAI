@@ -804,7 +804,7 @@ TRANSLATIONS = {   'Bengali': {   'afternoon_lunch': '☀️ দুপুরে�
                    'med_vaccination_rem': 'Vaccination Due Next Week',
                    'medical_reminders_title': 'Upcoming Medical Reminders',
                    'medium_risk_cluster': 'Elevated risks detected. Schedule routine checks.',
-                   'menu_exercise_coach': 'Exercise Coach',
+                   'menu_exercise_coach': 'Exercise Plan',
                    'milestone_1': "Baby recognizes mother's voice.",
                    'milestone_12': 'Baby begins standing.',
                    'milestone_3': 'Baby begins smiling and lifting head.',

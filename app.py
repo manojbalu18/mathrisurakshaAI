@@ -32,12 +32,21 @@ from tts_service import TTSService
 from escalation_service import EscalationService
 import hashlib
 
+try:
+    from sih_extensions.ui import render_sih_page
+    from sih_extensions.sih_database import init_sih_db
+except ImportError:
+    render_sih_page = None
+    init_sih_db = None
+
 # Print startup configuration diagnostic safely
 config.print_config_diagnostic()
 
 # Initialize Database tables once per runtime
 if "db_initialized" not in st.session_state:
     database.init_db()
+    if init_sih_db is not None:
+        init_sih_db()
     st.session_state["db_initialized"] = True
 
 # --- Performance Caches ---
@@ -157,8 +166,10 @@ def init_session_state():
         st.session_state['temp_phone'] = ""
     if 'temp_role' not in st.session_state:
         st.session_state['temp_role'] = None
-    if 'mother_page' not in st.session_state:
+    if 'mother_page' not in st.session_state or st.session_state.get('mother_page') in ["Daily Health Log", "AI Risk Panel"]:
         st.session_state['mother_page'] = "Dashboard Overview"
+    elif st.session_state.get('mother_page') == "AI Food Planner":
+        st.session_state['mother_page'] = "Food & Nutrition"
     if 'language' not in st.session_state:
         st.session_state['language'] = "English"
     if 'transcription' not in st.session_state:
@@ -1404,14 +1415,7 @@ def login_page():
         </style>
         """, unsafe_allow_html=True)
     
-    # Emergency Badge
-    st.markdown(f"""
-        <div class="emergency-badge">
-            {_t('emergency_badge')}
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Top Row: Emergency badge & Language selector
+    # Top Row: Language selector
     top_c1, top_c2 = st.columns([3, 1.2])
     with top_c2:
         cur_lang = st.session_state.get('language', 'English')
@@ -1874,12 +1878,9 @@ def mother_dashboard():
             "Check Symptoms": ("🩺 Check Symptoms", "🩺"),
             "My Health": ("📅 My Health", "📅"),
             "Health Reminders": ("🔔 Reminders", "🔔"),
-            "Daily Health Log": (_t("nav_log"), "📝"),
             "Voice Input (Symptoms)": (_t("nav_voice"), "🎤"),
-            "Food & Nutrition": (_t("nav_food"), "🍎"),
-            "AI Food Planner": (_t("nav_planner"), "🤖"),
+            "Food & Nutrition": (_t("nav_food") + " & AI Planner", "🍎"),
             "Mood Tracker": (_t("nav_mood"), "😊"),
-            "AI Risk Panel": (_t("nav_risk"), "📊"),
             "Live Location & Map": (_t("nav_map"), "📍"),
             "Pregnancy Journey": (_t("nav_journey"), "👶"),
             "Exercise Coach": (_t("menu_exercise_coach"), "🧘‍♀️"),
@@ -1888,6 +1889,17 @@ def mother_dashboard():
         }
         
         for key, (label, icon) in nav_options.items():
+            if st.button(f"{icon} {label}", use_container_width=True, type="secondary" if st.session_state['mother_page'] != key else "primary"):
+                st.session_state['mother_page'] = key
+                
+        st.markdown("<p style='color: #888; font-size: 0.8rem; font-weight: bold; margin-top: 15px;'>HEALTH SERVICES (DEMO)</p>", unsafe_allow_html=True)
+        sih_nav = {
+            "Facility Directory": ("Facility Directory", "🏥"),
+            "Appointments": ("Appointments", "📅"),
+            "Availability": ("Medicine & Diagnostics", "💊"),
+            "Teleconsultations": ("Teleconsultation", "💻")
+        }
+        for key, (label, icon) in sih_nav.items():
             if st.button(f"{icon} {label}", use_container_width=True, type="secondary" if st.session_state['mother_page'] != key else "primary"):
                 st.session_state['mother_page'] = key
                 
@@ -1908,7 +1920,11 @@ def mother_dashboard():
             if st.button("⬅ Back to Dashboard Overview", key=f"mother_subpage_back_{page}", use_container_width=True):
                 st.session_state['mother_page'] = "Dashboard Overview"
                 st.rerun()
-    
+
+    if page in ["Facility Directory", "Appointments", "Availability", "Teleconsultations"] and render_sih_page is not None:
+        render_sih_page(page, role="Mother")
+        return
+        
     if page == "Dashboard Overview":
         mother_name = st.session_state.get('mother_name', 'Mother')
         mother_id_str = st.session_state.get('unique_id', 'Unknown')
@@ -2181,12 +2197,12 @@ def mother_dashboard():
         with qa1:
             st.markdown("""
             <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 14px; padding: 12px; text-align: center; margin-bottom: 8px;">
-                <span style="font-size: 1.5rem;">📝</span>
-                <div style="color: #065f46; font-weight: 700; font-size: 0.85rem; margin-top: 4px;">Health Tracker</div>
+                <span style="font-size: 1.5rem;">🩺</span>
+                <div style="color: #065f46; font-weight: 700; font-size: 0.85rem; margin-top: 4px;">Check Symptoms</div>
             </div>
             """, unsafe_allow_html=True)
-            if st.button("📝 Log Health", key="btn_log_mother", use_container_width=True):
-                st.session_state['mother_page'] = "Daily Health Log"
+            if st.button("🩺 Symptoms", key="btn_log_mother", use_container_width=True):
+                st.session_state['mother_page'] = "Check Symptoms"
                 st.rerun()
         with qa2:
             st.markdown("""
@@ -2206,7 +2222,7 @@ def mother_dashboard():
             </div>
             """, unsafe_allow_html=True)
             if st.button("🍎 Meal Plan", key="btn_meal_mother", use_container_width=True):
-                st.session_state['mother_page'] = "AI Food Planner"
+                st.session_state['mother_page'] = "Food & Nutrition"
                 st.rerun()
         with qa4:
             st.markdown("""
@@ -2800,78 +2816,6 @@ def mother_dashboard():
             else:
                 st.markdown("<p style='color: #059669; font-weight: 600; font-size: 0.9rem;'>✓ No high-risk emergency escalations on record. All vitals historically normal.</p>", unsafe_allow_html=True)
 
-    elif page == "Daily Health Log":
-        st.title(_t("log_title"))
-        st.markdown(_t("log_desc"))
-        
-        with st.form("health_log_form"):
-            st.markdown("<div class='health-card'>", unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            with c1:
-                h_headache = st.checkbox(_t("sym_headache"))
-                h_swelling = st.checkbox(_t("sym_swelling"))
-                h_dizziness = st.checkbox(_t("sym_dizziness"))
-            with c2:
-                h_fetal = st.checkbox(_t("sym_fetal"))
-                h_bleeding = st.checkbox(_t("sym_bleeding"))
-                
-            other_symptoms = st.text_area(_t("other_symptoms"), placeholder=_t("other_symptoms_placeholder"))
-            st.markdown("</div>", unsafe_allow_html=True)
-            
-            if st.form_submit_button(_t("submit_log")):
-                # Aggregate symptoms
-                symptom_list = []
-                if h_headache: symptom_list.append("headache")
-                if h_swelling: symptom_list.append("swelling")
-                if h_dizziness: symptom_list.append("dizziness")
-                if h_fetal: symptom_list.append("reduced fetal movement")
-                if h_bleeding: symptom_list.append("bleeding")
-                if other_symptoms: symptom_list.append(other_symptoms)
-                
-                # Fetch baseline mood/nutrition from session if available (mocked here for now)
-                mood = "normal"
-                nutrition = "good"
-                
-                # Call AI Engine
-                ai_result = calculate_risk(symptom_list, mood, nutrition)
-                mother_id = st.session_state.get('unique_id', 'Unknown')
-                
-                if is_online():
-                    # Save to Database normally
-                    save_daily_log(mother_id, symptom_list, mood, nutrition, ai_result['risk_score'], ai_result['risk_level'], ai_result['timestamp'])
-                    
-                    if ai_result['escalation']:
-                        create_alert(mother_id, ai_result['risk_level'], ai_result['timestamp'])
-                        st.error(f"🚨 ALERT! Risk Level: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
-                        
-                        # Live Emergency Call & SMS Escalation
-                        if ai_result['risk_level'] == "High":
-                            try:
-                                trigger_emergency_escalation(mother_id, reason=f"High Risk Symptoms Logged: {', '.join(symptom_list)}")
-                            except Exception as e:
-                                print(f"Emergency dispatch note: {e}")
-                            render_offline_sms_button(mother_id)
-                    elif ai_result['risk_level'] == "Medium":
-                        st.warning(f"⚠️ {_t('current_risk')}: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
-                    else:
-                        st.success(f"{_t('success_analyzed_low')} {ai_result['recommendation']}")
-                else:
-                    # Save Offline to Local Database
-                    save_daily_log(mother_id, symptom_list, mood, nutrition, ai_result['risk_score'], ai_result['risk_level'], ai_result['timestamp'])
-                    
-                    if ai_result['escalation']:
-                        create_alert(mother_id, ai_result['risk_level'], ai_result['timestamp'])
-                        if ai_result['risk_level'] == "High":
-                            render_offline_sms_button(mother_id)
-                        
-                    # Still show the AI result UI so the offline experience feels identical
-                    if ai_result['escalation']:
-                        st.error(f"🚨 ALERT! Risk Level: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
-                    elif ai_result['risk_level'] == "Medium":
-                        st.warning(f"⚠️ {_t('current_risk')}: {ai_result['risk_level'].upper()}. {ai_result['recommendation']}")
-                    else:
-                        st.success(f"{_t('success_analyzed_low')} {ai_result['recommendation']}")
-
     elif page == "Voice Input (Symptoms)":
         st.title(_t("voice_input_title"))
         st.markdown(_t("voice_desc"))
@@ -3095,74 +3039,51 @@ def mother_dashboard():
                 if status_pills:
                     st.caption(" • ".join(status_pills))
 
-    elif page == "Food & Nutrition":
-        st.title(_t("food_title"))
-        st.markdown(_t("food_desc"))
+    elif page in ["Food & Nutrition", "AI Food Planner"]:
+        st.markdown(f"""
+            <div style="margin-bottom: 1.2rem;">
+                <h1 style="font-family: 'Outfit', sans-serif; color: #0f172a; font-weight: 800; font-size: 2.3rem; margin: 0;">
+                    🍎 {_t('food_title')} & {_t('ai_planner_title')}
+                </h1>
+                <p style="color: #64748b; font-size: 1.05rem; margin: 4px 0 0 0;">
+                    {_t('food_desc')} • {_t('ai_planner_desc')}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
         
-        st.warning(_t("nutri_reminder"))
-        
-        with st.form("food_log"):
-            st.subheader(_t("water_intake_sub"))
-            water_glasses = st.slider(_t("water_slider_label"), 0, 15, 3)
-            
-            st.subheader(_t("food_intake_sub"))
-            st.text_area(_t("food_intake_sub"), placeholder=_t("food_placeholder"))
-            
-            if st.form_submit_button(_t("btn_save_nutri")):
-                if is_online():
-                    if water_glasses < 5:
-                        st.error(_t("err_low_water").format(water_glasses))
-                    else:
-                        st.success(_t("success_nutri").format(water_glasses))
-                else:
-                    # Nutrition data is purely informational in this demo, but we save it offline for consistency
-                    mother_id = st.session_state.get('unique_id', 'Unknown')
-                    import json
-                    payload = {"water": water_glasses, "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-                    from database import save_offline_record
-                    save_offline_record(mother_id, "nutrition", json.dumps(payload))
-                    # Show same visual feedback offline
-                    if water_glasses < 5:
-                        st.error(_t("err_low_water").format(water_glasses))
-                    else:
-                        st.success(_t("success_nutri").format(water_glasses))
-
-    elif page == "AI Food Planner":
-        st.markdown(f"<h1 style='color: #0b5394; font-size: 2.5rem; font-weight: 800; margin-bottom: 0.2rem;'>{_t('ai_planner_title')}</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color: #555; font-size: 1.1rem; margin-bottom: 2rem;'>{_t('ai_planner_desc')}</p>", unsafe_allow_html=True)
-        
-        # Custom CSS for Food Planner
+        # Custom CSS for Meal Planner & Cards
         st.markdown("""
             <style>
             .meal-card {
                 padding: 1.5rem;
-                border-radius: 15px;
+                border-radius: 16px;
                 color: white;
                 height: 100%;
                 transition: transform 0.3s ease, box-shadow 0.3s ease;
                 margin-bottom: 1rem;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                box-shadow: 0 4px 15px rgba(0,0,0,0.08);
             }
             .meal-card:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+                transform: translateY(-4px);
+                box-shadow: 0 8px 25px rgba(0,0,0,0.14);
             }
             .meal-morning {
-                background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 99%, #fad0c4 100%);
+                background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
             }
             .meal-afternoon {
-                background: linear-gradient(135deg, #48c6ef 0%, #6f86d6 100%);
+                background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
             }
             .meal-night {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
             }
             .meal-header {
-                font-size: 1.3rem;
-                font-weight: 700;
+                font-size: 1.25rem;
+                font-weight: 800;
                 margin-bottom: 1rem;
                 display: flex;
                 align-items: center;
                 gap: 10px;
+                font-family: 'Outfit', sans-serif;
             }
             .meal-list {
                 list-style-type: none;
@@ -3170,94 +3091,174 @@ def mother_dashboard():
                 margin: 0;
             }
             .meal-item {
-                background: rgba(255, 255, 255, 0.2);
+                background: rgba(255, 255, 255, 0.22);
                 margin: 0.5rem 0;
                 padding: 0.6rem 1rem;
-                border-radius: 8px;
+                border-radius: 10px;
                 font-size: 0.95rem;
-                font-weight: 500;
-                backdrop-filter: blur(5px);
+                font-weight: 600;
+                backdrop-filter: blur(6px);
+                border: 1px solid rgba(255, 255, 255, 0.25);
             }
             .planner-controls {
-                background: white;
-                padding: 1.5rem;
-                border-radius: 12px;
-                border: 1px solid #eee;
-                margin-bottom: 2rem;
+                background: #ffffff;
+                padding: 1.2rem 1.5rem;
+                border-radius: 14px;
+                border: 1.5px solid #e2e8f0;
+                margin-bottom: 1.5rem;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.03);
             }
             </style>
         """, unsafe_allow_html=True)
 
-        with st.container():
-            st.markdown("<div class='planner-controls'>", unsafe_allow_html=True)
-            col_diet, col_day = st.columns(2)
-            with col_diet:
-                diet_type = st.radio(_t("diet_pref_label"), [_t("veg"), _t("non_veg")], horizontal=True)
-                diet_key = "Vegetarian" if diet_type == _t("veg") else "Non-Vegetarian"
-            with col_day:
-                days_map = {
-                    _t("day_monday"): "Monday",
-                    _t("day_tuesday"): "Tuesday",
-                    _t("day_wednesday"): "Wednesday",
-                    _t("day_thursday"): "Thursday",
-                    _t("day_friday"): "Friday",
-                    _t("day_saturday"): "Saturday",
-                    _t("day_sunday"): "Sunday"
-                }
-                selected_day_t = st.selectbox(_t("day_select_label"), list(days_map.keys()))
-                selected_day = days_map[selected_day_t]
-            st.markdown("</div>", unsafe_allow_html=True)
+        tab_planner, tab_tracker = st.tabs(["🥗 AI Personalized Meal Planner", "💧 Daily Hydration & Meal Tracker"])
+        
+        # -------------------------------------------------------------
+        # TAB 1: AI PERSONALIZED MEAL PLANNER
+        # -------------------------------------------------------------
+        with tab_planner:
+            st.markdown("""
+                <div style="background: #fdf2f8; border: 1.5px solid #fbcfe8; border-left: 6px solid #db2777; padding: 12px 18px; border-radius: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.3rem;">✨</span>
+                        <span style="color: #9d174d; font-weight: 700; font-size: 0.92rem;">
+                            AI Nutritionist Schedule: Balanced meals optimized for maternal energy, fetal growth, and gestational wellness.
+                        </span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
-        # Unified meal plan data
-        meal_plans = {
-            "Monday": {"Vegetarian": ("meal_oatmeal_almonds", "meal_dal_roti_spinach", "meal_khichdi_veg"), "Non-Vegetarian": ("meal_boiled_eggs_toast", "meal_chicken_curry_rice", "meal_light_soup_salad")},
-            "Tuesday": {"Vegetarian": ("meal_poha_peanut", "meal_rajma_rice", "meal_paneer_sabzi_roti"), "Non-Vegetarian": ("meal_omelette_roti", "meal_fish_curry_quinoa", "meal_grilled_chicken_salad")},
-            "Wednesday": {"Vegetarian": ("meal_idli_sambar", "meal_chana_masala_roti", "meal_veg_pulao_raita"), "Non-Vegetarian": ("meal_egg_bhurji", "meal_mutton_stew", "meal_chicken_clear_soup")},
-            "Thursday": {"Vegetarian": ("meal_upma_veggies", "meal_kadhi_pakora_rice", "meal_dalia"), "Non-Vegetarian": ("meal_boiled_eggs_fruits", "meal_egg_curry_rice", "meal_grilled_fish")},
-            "Friday": {"Vegetarian": ("meal_besan_chilla", "meal_aloo_gobi_roti", "meal_lentil_soup"), "Non-Vegetarian": ("meal_chicken_sausages", "meal_chicken_biryani", "meal_mutton_soup")},
-            "Saturday": {"Vegetarian": ("meal_stuffed_paratha", "meal_mushroom_curry", "meal_veg_stew"), "Non-Vegetarian": ("meal_scrambled_eggs", "meal_fish_fry", "meal_chicken_salad")},
-            "Sunday": {"Vegetarian": ("meal_smoothie_bowl", "meal_paneer_biryani", "meal_tomato_soup"), "Non-Vegetarian": ("meal_egg_sandwich", "meal_sunday_chicken", "meal_chicken_clear_soup")}
-        }
-        
-        m_key, a_key, e_key = meal_plans[selected_day][diet_key]
-        
-        col_m, col_a, col_e = st.columns(3)
-        
-        with col_m:
-            st.markdown(f"""
-                <div class='meal-card meal-morning'>
-                    <div class='meal-header'>🌅 {_t('morning_routine')}</div>
-                    <div class='meal-list'>
-                        <div class='meal-item'>💧 {_t('warm_water')}</div>
-                        <div class='meal-item'>🥣 <b>{_t(m_key)}</b></div>
-                        <div class='meal-item'>💊 {_t('prenatal_vits')}</div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+            with st.container():
+                st.markdown("<div class='planner-controls'>", unsafe_allow_html=True)
+                col_diet, col_day = st.columns(2)
+                with col_diet:
+                    diet_type = st.radio(_t("diet_pref_label"), [_t("veg"), _t("non_veg")], horizontal=True)
+                    diet_key = "Vegetarian" if diet_type == _t("veg") else "Non-Vegetarian"
+                with col_day:
+                    days_map = {
+                        _t("day_monday"): "Monday",
+                        _t("day_tuesday"): "Tuesday",
+                        _t("day_wednesday"): "Wednesday",
+                        _t("day_thursday"): "Thursday",
+                        _t("day_friday"): "Friday",
+                        _t("day_saturday"): "Saturday",
+                        _t("day_sunday"): "Sunday"
+                    }
+                    selected_day_t = st.selectbox(_t("day_select_label"), list(days_map.keys()))
+                    selected_day = days_map[selected_day_t]
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # Unified meal plan data
+            meal_plans = {
+                "Monday": {"Vegetarian": ("meal_oatmeal_almonds", "meal_dal_roti_spinach", "meal_khichdi_veg"), "Non-Vegetarian": ("meal_boiled_eggs_toast", "meal_chicken_curry_rice", "meal_light_soup_salad")},
+                "Tuesday": {"Vegetarian": ("meal_poha_peanut", "meal_rajma_rice", "meal_paneer_sabzi_roti"), "Non-Vegetarian": ("meal_omelette_roti", "meal_fish_curry_quinoa", "meal_grilled_chicken_salad")},
+                "Wednesday": {"Vegetarian": ("meal_idli_sambar", "meal_chana_masala_roti", "meal_veg_pulao_raita"), "Non-Vegetarian": ("meal_egg_bhurji", "meal_mutton_stew", "meal_chicken_clear_soup")},
+                "Thursday": {"Vegetarian": ("meal_upma_veggies", "meal_kadhi_pakora_rice", "meal_dalia"), "Non-Vegetarian": ("meal_boiled_eggs_fruits", "meal_egg_curry_rice", "meal_grilled_fish")},
+                "Friday": {"Vegetarian": ("meal_besan_chilla", "meal_aloo_gobi_roti", "meal_lentil_soup"), "Non-Vegetarian": ("meal_chicken_sausages", "meal_chicken_biryani", "meal_mutton_soup")},
+                "Saturday": {"Vegetarian": ("meal_stuffed_paratha", "meal_mushroom_curry", "meal_veg_stew"), "Non-Vegetarian": ("meal_scrambled_eggs", "meal_fish_fry", "meal_chicken_salad")},
+                "Sunday": {"Vegetarian": ("meal_smoothie_bowl", "meal_paneer_biryani", "meal_tomato_soup"), "Non-Vegetarian": ("meal_egg_sandwich", "meal_sunday_chicken", "meal_chicken_clear_soup")}
+            }
             
-        with col_a:
-            st.markdown(f"""
-                <div class='meal-card meal-afternoon'>
-                    <div class='meal-header'>☀️ {_t('afternoon_lunch')}</div>
-                    <div class='meal-list'>
-                        <div class='meal-item'>🥗 <b>{_t(a_key)}</b></div>
-                        <div class='meal-item'>🥬 {_t('fresh_greens')}</div>
-                        <div class='meal-item'>🥣 {_t('curd')}</div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+            m_key, a_key, e_key = meal_plans[selected_day][diet_key]
             
-        with col_e:
-            st.markdown(f"""
-                <div class='meal-card meal-night'>
-                    <div class='meal-header'>🌙 {_t('night_dinner')}</div>
-                    <div class='meal-list'>
-                        <div class='meal-item'>🍲 <b>{_t(e_key)}</b></div>
-                        <div class='meal-item'>🍞 {_t('easy_digest')}</div>
-                        <div class='meal-item'>🥛 {_t('warm_milk')}</div>
+            col_m, col_a, col_e = st.columns(3)
+            
+            with col_m:
+                st.markdown(f"""
+                    <div class='meal-card meal-morning'>
+                        <div class='meal-header'>🌅 {_t('morning_routine')}</div>
+                        <div class='meal-list'>
+                            <div class='meal-item'>💧 {_t('warm_water')}</div>
+                            <div class='meal-item'>🥣 <b>{_t(m_key)}</b></div>
+                            <div class='meal-item'>💊 {_t('prenatal_vits')}</div>
+                        </div>
                     </div>
-                </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+                
+            with col_a:
+                st.markdown(f"""
+                    <div class='meal-card meal-afternoon'>
+                        <div class='meal-header'>☀️ {_t('afternoon_lunch')}</div>
+                        <div class='meal-list'>
+                            <div class='meal-item'>🥗 <b>{_t(a_key)}</b></div>
+                            <div class='meal-item'>🥬 {_t('fresh_greens')}</div>
+                            <div class='meal-item'>🥣 {_t('curd')}</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+            with col_e:
+                st.markdown(f"""
+                    <div class='meal-card meal-night'>
+                        <div class='meal-header'>🌙 {_t('night_dinner')}</div>
+                        <div class='meal-list'>
+                            <div class='meal-item'>🍲 <b>{_t(e_key)}</b></div>
+                            <div class='meal-item'>🍞 {_t('easy_digest')}</div>
+                            <div class='meal-item'>🥛 {_t('warm_milk')}</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown("""
+                    <div style="font-weight: 800; color: #0f172a; font-size: 1.05rem; margin-bottom: 8px;">
+                        🥬 Maternal Essential Nutrients & Superfoods
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px;">
+                            <div style="color: #166534; font-weight: 700; font-size: 0.9rem;">🥦 Iron & Folate</div>
+                            <div style="color: #15803d; font-size: 0.82rem; margin-top: 2px;">Palak (Spinach), Methi, Lentils, Jaggery, Beetroot for hemoglobin support.</div>
+                        </div>
+                        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px;">
+                            <div style="color: #1e40af; font-weight: 700; font-size: 0.9rem;">🥛 Calcium & Vitamin D</div>
+                            <div style="color: #1d4ed8; font-size: 0.82rem; margin-top: 2px;">Curd, Milk, Paneer, Ragi, Sesame seeds for fetal skeletal development.</div>
+                        </div>
+                        <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 10px; padding: 12px;">
+                            <div style="color: #854d0e; font-weight: 700; font-size: 0.9rem;">🥚 Protein & Energy</div>
+                            <div style="color: #a16207; font-size: 0.82rem; margin-top: 2px;">Boiled eggs, Dal, Sprouts, Peanuts, Almonds, Chana for maternal tissue repair.</div>
+                        </div>
+                        <div style="background: #fdf2f8; border: 1px solid #fbcfe8; border-radius: 10px; padding: 12px;">
+                            <div style="color: #9d174d; font-weight: 700; font-size: 0.9rem;">🌾 Dietary Fiber</div>
+                            <div style="color: #be185d; font-size: 0.82rem; margin-top: 2px;">Oats, Whole wheat, Fresh fruits (apples, oranges) to relieve digestion issues.</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+        # -------------------------------------------------------------
+        # TAB 2: DAILY HYDRATION & MEAL TRACKER
+        # -------------------------------------------------------------
+        with tab_tracker:
+            st.warning(_t("nutri_reminder"))
+            
+            with st.form("food_log"):
+                st.subheader(_t("water_intake_sub"))
+                water_glasses = st.slider(_t("water_slider_label"), 0, 15, 8, help="Aim for at least 8 to 10 glasses (2.5 - 3 Liters) daily.")
+                
+                if water_glasses < 5:
+                    st.markdown("<p style='color: #dc2626; font-size: 0.85rem; font-weight: 700;'>⚠️ Low hydration level. Drink more clean boiled/filtered water throughout the day.</p>", unsafe_allow_html=True)
+                elif water_glasses >= 8:
+                    st.markdown("<p style='color: #16a34a; font-size: 0.85rem; font-weight: 700;'>✅ Excellent hydration! Maintains amniotic fluid and circulation.</p>", unsafe_allow_html=True)
+                
+                st.subheader(_t("food_intake_sub"))
+                meal_notes = st.text_area(_t("food_intake_sub"), placeholder=_t("food_placeholder"))
+                
+                if st.form_submit_button(_t("btn_save_nutri"), type="primary"):
+                    if is_online():
+                        if water_glasses < 5:
+                            st.error(_t("err_low_water").format(water_glasses))
+                        else:
+                            st.success(_t("success_nutri").format(water_glasses))
+                    else:
+                        mother_id = st.session_state.get('unique_id', 'Unknown')
+                        import json
+                        payload = {"water": water_glasses, "meals": meal_notes, "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                        from database import save_offline_record
+                        save_offline_record(mother_id, "nutrition", json.dumps(payload))
+                        if water_glasses < 5:
+                            st.error(_t("err_low_water").format(water_glasses))
+                        else:
+                            st.success(_t("success_nutri").format(water_glasses))
 
     elif page == "Health Reminders":
         st.markdown(f"<h1 style='color: #0f172a; font-family: Outfit, sans-serif; font-size: 2.3rem; font-weight: 800; margin-bottom: 0.3rem;'>{_t('reminders_main_title')}</h1>", unsafe_allow_html=True)
@@ -3463,109 +3464,563 @@ def mother_dashboard():
                     
                     st.success(_t("rem_completed_msg"))
 
-    elif page == "AI Risk Panel":
-        import plotly.graph_objects as go
-        st.title(_t("risk_panel_title"))
-        st.markdown(_t("risk_panel_desc"))
-        
-        if st.button(_t("btn_start_ai"), type="primary"):
-            st.session_state['simulating'] = True
-            
-        dashboard_placeholder = st.empty()
-        
-        if st.session_state.get('simulating', False):
-            import random
-            
-            st.info(_t("status_monitoring"))
-            st.write(_t("escalation_status"))
-
-            # Fast real-time streaming preview (snappy UI feedback)
-            for i in range(3):
-                bp_level = random.randint(110, 150)
-                swelling_level = random.randint(10, 60)
-                fetal_level = random.randint(40, 90)
-                stress_level = random.randint(30, 90)
-                
-                # Formula for simulation score logic
-                deduction = ((bp_level - 120) * 0.4) + (swelling_level * 0.3) + ((80 - fetal_level) * 0.4) + (stress_level * 0.2)
-                score = max(10, min(100, int(100 - deduction)))
-                
-                if score > 75:
-                    status_title = _t("risk_low")
-                    status_color = "#28a745"
-                    bg_color = "#f4faf6"
-                    text_color = "#155724"
-                elif score > 50:
-                    status_title = _t("risk_medium_alert")
-                    status_color = "#ffc107"
-                    bg_color = "#fffdf5"
-                    text_color = "#856404"
-                else:
-                    status_title = _t("risk_high_alert")
-                    status_color = "#dc3545"
-                    bg_color = "#f8d7da"
-                    text_color = "#721c24"
-
-                fig = go.Figure(data=[
-                    go.Bar(name='Threshold', x=[_t('bp_label'), _t('swelling_label'), _t('fetal_label'), _t('stress_label')], y=[120, 20, 80, 50], marker_color='#e0e0e0'),
-                    go.Bar(name='Current Level', x=[_t('bp_label'), _t('swelling_label'), _t('fetal_label'), _t('stress_label')], 
-                           y=[bp_level, swelling_level, fetal_level, stress_level], 
-                           marker_color=[
-                               '#dc3545' if bp_level > 120 else '#28a745',
-                               '#dc3545' if swelling_level > 20 else '#28a745',
-                               '#dc3545' if fetal_level < 80 else '#28a745',
-                               '#dc3545' if stress_level > 50 else '#28a745'
-                           ])
-                ])
-                fig.update_layout(barmode='group', title=_t('realtime_monitoring_title'), template='plotly_white', height=350, margin=dict(l=20, r=20, t=40, b=20))
-                
-                with dashboard_placeholder.container():
-                    c1, c2 = st.columns([1, 1])
-                    with c1:
-                        st.markdown(f"""
-                            <div class='health-card' style='border-left: 6px solid {status_color}; background-color: {bg_color}; height: 100%; transition: all 0.2s ease;'>
-                                <h3 style='color: {text_color}; margin-top:0'>{_t('status')}: {status_title}</h3>
-                                <h1 style='font-size: 3rem; margin: 0; color: {text_color};'>{_t('score')}: {score}/100</h1>
-                                <hr>
-                                <p><b>{_t('monitoring')}:</b> {_t('actively_reading_sensors')} 🔄</p>
-                                <p><b>{_t('escalation_status')}:</b> {_t('analyzing_condition')}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                    with c2:
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                time.sleep(0.05)  # Fast responsive animation delay
-            
-            # Final steady state
-            with dashboard_placeholder.container():
-                fig = go.Figure(data=[
-                    go.Bar(name='Threshold', x=[_t('bp_label'), _t('swelling_label'), _t('fetal_label'), _t('stress_label')], y=[120, 20, 80, 50], marker_color='#e0e0e0'),
-                    go.Bar(name='Last Recorded Level', x=[_t('bp_label'), _t('swelling_label'), _t('fetal_label'), _t('stress_label')], y=[130, 45, 75, 65], marker_color=['#ffc107', '#dc3545', '#28a745', '#ffc107'])
-                ])
-                fig.update_layout(barmode='group', title=_t('final_assessment_title'), template='plotly_white', height=350, margin=dict(l=20, r=20, t=40, b=20))
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    st.markdown(f"""
-                        <div class="classy-card card-amber" style="height: 100%;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <span class="icon-badge">⚠️</span>
-                                <span class="card-pill">{_t('risk_medium_alert')}</span>
-                            </div>
-                            <h4 class="card-title">{_t('final_assessment')}</h4>
-                            <p class="card-value" style="font-size: 2.4rem;">65<span style="font-size: 1.1rem; font-weight: 600;">/100</span></p>
-                            <p class="card-caption" style="margin-top: 10px;"><b>{_t('recommendation')}:</b> {_t('monitor_swelling_tip')}</p>
-                            <p class="card-caption" style="margin-top: 6px;"><b>{_t('escalation_status')}:</b> {_t('notified_asha_worker')}</p>
+        # -------------------------------------------------------------
+        # DAILY WELLNESS CARD
+        # -------------------------------------------------------------
+        import textwrap
+        st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+        st.markdown(textwrap.dedent("""
+            <div style="background: linear-gradient(135deg, #fff1f2 0%, #fdf2f8 50%, #f0fdf4 100%); border: 1.5px solid #fbcfe8; border-left: 6px solid #db2777; border-radius: 16px; padding: 18px 22px; box-shadow: 0 4px 16px rgba(219,39,119,0.06); margin-bottom: 24px;">
+                <div style="display: flex; align-items: flex-start; gap: 14px;">
+                    <span style="font-size: 1.8rem; line-height: 1;">🌸</span>
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                            <span style="color: #9d174d; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.08rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                Daily Maternal Wellness Affirmation
+                            </span>
+                            <span style="background: #fce7f3; color: #be185d; padding: 3px 10px; border-radius: 20px; font-weight: 700; font-size: 0.78rem; border: 1px solid #fbcfe8;">
+                                ✨ Today's Positive Energy
+                            </span>
                         </div>
-                    """, unsafe_allow_html=True)
+                        <p style="margin: 8px 0 4px 0; color: #334155; font-size: 0.98rem; line-height: 1.55; font-weight: 500;">
+                            <i>“You are doing an extraordinary job nurturing new life with love, patience, and courage. Honor your body, embrace every gentle breath, and remember that peaceful thoughts nourish both you and your baby.”</i>
+                        </p>
+                        <div style="display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; font-size: 0.82rem; color: #64748b; font-weight: 600;">
+                            <span>💧 Stay hydrated</span>
+                            <span>🌬️ Take 3 deep breaths</span>
+                            <span>☀️ Smile & embrace serenity</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        """).strip(), unsafe_allow_html=True)
+
+        # -------------------------------------------------------------
+        # RELAX & ENJOY SECTION (5 INTERACTIVE FEATURES)
+        # -------------------------------------------------------------
+        st.markdown(textwrap.dedent("""
+            <div style="margin-bottom: 1rem;">
+                <div style="display: inline-flex; align-items: center; gap: 6px; background: #e0f2fe; color: #0284c7; padding: 4px 14px; border-radius: 20px; font-weight: 800; font-size: 0.82rem; border: 1px solid #bae6fd; margin-bottom: 6px;">
+                    🌿 SERENITY & MINDFULNESS
+                </div>
+                <h2 style="font-family: 'Outfit', sans-serif; color: #0f172a; font-weight: 800; font-size: 1.85rem; margin: 0;">
+                    🌸 Relax & Enjoy
+                </h2>
+                <p style="color: #64748b; font-size: 0.95rem; margin: 4px 0 0 0;">
+                    Gentle maternal activities, calming soundscapes, guided breathing, inspiring stories, and relaxing creative games.
+                </p>
+            </div>
+        """).strip(), unsafe_allow_html=True)
+
+        relax_tab1, relax_tab2, relax_tab3, relax_tab4, relax_tab5 = st.tabs([
+            "🎵 Calming Music & Sounds",
+            "🫁 2-Minute Breathing",
+            "📖 Positive Stories",
+            "🎮 Mini Games",
+            "🎨 Color & Creativity"
+        ])
+
+        # -------------------------------------------------------------
+        # FEATURE 1: CALMING MUSIC & NATURE SOUNDS
+        # -------------------------------------------------------------
+        with relax_tab1:
+            st.markdown(textwrap.dedent("""
+                <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 16px 20px; margin-bottom: 16px;">
+                    <h4 style="font-family: 'Outfit', sans-serif; color: #0f172a; margin: 0 0 6px 0; font-weight: 800;">
+                        🎧 Soothing Ambient Soundscapes for Mothers
+                    </h4>
+                    <p style="color: #64748b; font-size: 0.88rem; margin: 0;">
+                        Listen to gentle nature sounds and harmonic frequencies proven to lower cortisol and induce peaceful sleep.
+                    </p>
+                </div>
+            """).strip(), unsafe_allow_html=True)
+
+            # Web Audio Synthesized Soothing Soundscape Generator
+            import streamlit.components.v1 as components
+            
+            sound_player_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 0; background: transparent; }
+                    .sound-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
+                    .sound-btn { background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 14px 16px; text-align: left; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; gap: 12px; }
+                    .sound-btn:hover { border-color: #0284c7; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(2,132,199,0.12); }
+                    .sound-btn.active { border-color: #0284c7; background: #f0f9ff; border-width: 2px; }
+                    .sound-icon { font-size: 1.6rem; width: 40px; height: 40px; border-radius: 10px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; }
+                    .sound-info { font-weight: 700; color: #0f172a; font-size: 0.92rem; }
+                    .sound-sub { font-size: 0.76rem; color: #64748b; font-weight: 500; }
+                    .controls-bar { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 14px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+                    .btn-action { background: #0284c7; color: white; border: none; padding: 8px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.88rem; }
+                    .btn-action:hover { background: #0369a1; }
+                    .status-badge { font-size: 0.85rem; font-weight: 600; color: #38bdf8; display: flex; align-items: center; gap: 6px; }
+                </style>
+            </head>
+            <body>
+                <div class="sound-grid">
+                    <div class="sound-btn" onclick="playSound('ocean')">
+                        <div class="sound-icon">🌊</div>
+                        <div>
+                            <div class="sound-info">Ocean Waves</div>
+                            <div class="sound-sub">Gentle tidal rhythm</div>
+                        </div>
+                    </div>
+                    <div class="sound-btn" onclick="playSound('rain')">
+                        <div class="sound-icon">🌧️</div>
+                        <div>
+                            <div class="sound-info">Peaceful Rain</div>
+                            <div class="sound-sub">Soft droplet white noise</div>
+                        </div>
+                    </div>
+                    <div class="sound-btn" onclick="playSound('forest')">
+                        <div class="sound-icon">🌲</div>
+                        <div>
+                            <div class="sound-info">Forest Birds</div>
+                            <div class="sound-sub">Morning nature breeze</div>
+                        </div>
+                    </div>
+                    <div class="sound-btn" onclick="playSound('zen')">
+                        <div class="sound-icon">🧘‍♀️</div>
+                        <div>
+                            <div class="sound-info">432Hz Zen Chime</div>
+                            <div class="sound-sub">Harmonic calming wave</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="controls-bar">
+                    <div class="status-badge" id="now-playing">
+                        <span>⏹️</span> Audio Standby • Click a soundscape to start
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <span style="font-size: 0.8rem; color: #94a3b8;">🔊 Volume:</span>
+                        <input type="range" id="vol" min="0" max="1" step="0.05" value="0.5" onchange="setVolume(this.value)" style="cursor: pointer; width: 100px;">
+                        <button class="btn-action" onclick="stopSound()">⏹️ Stop</button>
+                    </div>
+                </div>
+
+                <script>
+                    let audioCtx = null;
+                    let currentNodes = [];
+                    let masterGain = null;
+                    let activeType = null;
+
+                    function initAudio() {
+                        if (!audioCtx) {
+                            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                            masterGain = audioCtx.createGain();
+                            masterGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                            masterGain.connect(audioCtx.destination);
+                        }
+                        if (audioCtx.state === 'suspended') {
+                            audioCtx.resume();
+                        }
+                    }
+
+                    function setVolume(v) {
+                        if (masterGain) {
+                            masterGain.gain.setValueAtTime(parseFloat(v), audioCtx.currentTime);
+                        }
+                    }
+
+                    function stopSound() {
+                        currentNodes.forEach(node => {
+                            try { node.stop ? node.stop() : node.disconnect(); } catch(e) {}
+                        });
+                        currentNodes = [];
+                        activeType = null;
+                        document.getElementById('now-playing').innerHTML = "<span>⏹️</span> Audio Standby";
+                        document.querySelectorAll('.sound-btn').forEach(el => el.classList.remove('active'));
+                    }
+
+                    function playSound(type) {
+                        initAudio();
+                        stopSound();
+                        activeType = type;
+
+                        document.querySelectorAll('.sound-btn').forEach(el => {
+                            if (el.innerText.toLowerCase().includes(type.toLowerCase())) el.classList.add('active');
+                        });
+
+                        const now = audioCtx.currentTime;
+
+                        if (type === 'zen') {
+                            // 432Hz harmonic soothing chime chord
+                            [216, 432, 648].forEach((freq, idx) => {
+                                const osc = audioCtx.createOscillator();
+                                const gain = audioCtx.createGain();
+                                osc.type = 'sine';
+                                osc.frequency.setValueAtTime(freq, now);
+                                gain.gain.setValueAtTime(0.08 / (idx + 1), now);
+                                osc.connect(gain);
+                                gain.connect(masterGain);
+                                osc.start();
+                                currentNodes.push(osc);
+                            });
+                            document.getElementById('now-playing').innerHTML = "<span>▶️</span> Playing: 432Hz Zen Meditation Harmonics";
+                        } else if (type === 'ocean' || type === 'rain' || type === 'forest') {
+                            // White/Pink noise buffer for natural elements
+                            const bufferSize = audioCtx.sampleRate * 2;
+                            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                            const output = noiseBuffer.getChannelData(0);
+                            let lastOut = 0.0;
+                            for (let i = 0; i < bufferSize; i++) {
+                                const white = Math.random() * 2 - 1;
+                                output[i] = (lastOut + (0.02 * white)) / 1.02; // Pink-ish noise filter
+                                lastOut = output[i];
+                                output[i] *= 3.5;
+                            }
+
+                            const whiteNoise = audioCtx.createBufferSource();
+                            whiteNoise.buffer = noiseBuffer;
+                            whiteNoise.loop = true;
+
+                            const filter = audioCtx.createBiquadFilter();
+                            filter.type = type === 'ocean' ? 'lowpass' : (type === 'rain' ? 'bandpass' : 'highpass');
+                            filter.frequency.setValueAtTime(type === 'ocean' ? 380 : (type === 'rain' ? 800 : 1800), now);
+
+                            const gain = audioCtx.createGain();
+                            gain.gain.setValueAtTime(0.12, now);
+
+                            whiteNoise.connect(filter);
+                            filter.connect(gain);
+                            gain.connect(masterGain);
+                            whiteNoise.start();
+                            currentNodes.push(whiteNoise);
+
+                            const names = { ocean: "Ocean Waves", rain: "Peaceful Rain", forest: "Forest Morning" };
+                            document.getElementById('now-playing').innerHTML = `<span>▶️</span> Playing: ${names[type]}`;
+                        }
+                    }
+                </script>
+            </body>
+            </html>
+            """
+            components.html(sound_player_html, height=190)
+
+        # -------------------------------------------------------------
+        # FEATURE 2: 2-MINUTE BREATHING EXERCISE
+        # -------------------------------------------------------------
+        with relax_tab2:
+            st.markdown(textwrap.dedent("""
+                <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 14px; padding: 14px 18px; margin-bottom: 16px;">
+                    <h4 style="font-family: 'Outfit', sans-serif; color: #065f46; margin: 0 0 4px 0; font-weight: 800;">
+                        🫁 4-7-8 Maternal Calming Breathing Guide
+                    </h4>
+                    <p style="color: #15803d; font-size: 0.88rem; margin: 0;">
+                        Follow the animated circle: Inhale through the nose (4s), hold gently (7s), and exhale through the mouth (8s).
+                    </p>
+                </div>
+            """).strip(), unsafe_allow_html=True)
+
+            breathing_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; margin: 0; padding: 10px 0; }
+                    .breath-container { width: 100%; max-width: 480px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 24px; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.03); }
+                    .circle-wrapper { height: 180px; display: flex; align-items: center; justify-content: center; position: relative; margin: 10px 0; }
+                    .breath-circle { width: 90px; height: 90px; border-radius: 50%; background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 0.95rem; box-shadow: 0 0 24px rgba(2,132,199,0.3); transition: all 1s ease; border: 3px solid rgba(255,255,255,0.8); }
+                    .breath-circle.inhale { transform: scale(1.65); background: linear-gradient(135deg, #34d399 0%, #059669 100%); box-shadow: 0 0 32px rgba(5,150,105,0.4); }
+                    .breath-circle.hold { transform: scale(1.65); background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 0 32px rgba(217,119,6,0.4); }
+                    .breath-circle.exhale { transform: scale(0.9); background: linear-gradient(135deg, #818cf8 0%, #4f46e5 100%); box-shadow: 0 0 20px rgba(79,70,229,0.3); }
+                    .instruction { font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 10px 0 4px 0; min-height: 30px; }
+                    .timer-text { font-size: 0.88rem; color: #64748b; font-weight: 600; }
+                    .btn-start { background: #0284c7; color: white; border: none; padding: 10px 24px; border-radius: 10px; font-weight: 800; font-size: 0.92rem; cursor: pointer; margin-top: 14px; box-shadow: 0 2px 6px rgba(2,132,199,0.3); }
+                    .btn-start:hover { background: #0369a1; }
+                </style>
+            </head>
+            <body>
+                <div class="breath-container">
+                    <div class="circle-wrapper">
+                        <div class="breath-circle" id="circle">Breathe</div>
+                    </div>
+                    <div class="instruction" id="instruction-text">Press Start to Begin</div>
+                    <div class="timer-text" id="phase-timer">Session Duration: 2:00</div>
+                    <button class="btn-start" id="start-btn" onclick="toggleBreathing()">▶️ Start 2-Minute Calming Breathing</button>
+                </div>
+
+                <script>
+                    let isRunning = false;
+                    let interval = null;
+                    let timeLeft = 120;
+                    let phase = 'idle'; // inhale, hold, exhale
+
+                    function toggleBreathing() {
+                        if (isRunning) {
+                            clearInterval(interval);
+                            isRunning = false;
+                            document.getElementById('start-btn').innerText = "▶️ Start 2-Minute Calming Breathing";
+                            document.getElementById('instruction-text').innerText = "Session Paused";
+                            document.getElementById('circle').className = "breath-circle";
+                            document.getElementById('circle').innerText = "Paused";
+                        } else {
+                            isRunning = true;
+                            document.getElementById('start-btn').innerText = "⏸️ Pause Exercise";
+                            runCycle();
+                        }
+                    }
+
+                    function runCycle() {
+                        let step = 0;
+                        const cycle = () => {
+                            if (!isRunning) return;
+                            
+                            // 4s Inhale, 7s Hold, 8s Exhale (19s cycle)
+                            const mod = step % 19;
+                            const circle = document.getElementById('circle');
+                            const text = document.getElementById('instruction-text');
+
+                            if (mod < 4) {
+                                circle.className = "breath-circle inhale";
+                                circle.innerText = "Inhale";
+                                text.innerText = `🌬️ Inhale gently through your nose... (${4 - mod}s)`;
+                            } else if (mod < 11) {
+                                circle.className = "breath-circle hold";
+                                circle.innerText = "Hold";
+                                text.innerText = `🌸 Hold your breath gently... (${11 - mod}s)`;
+                            } else {
+                                circle.className = "breath-circle exhale";
+                                circle.innerText = "Exhale";
+                                text.innerText = `✨ Exhale slowly through your mouth... (${19 - mod}s)`;
+                            }
+
+                            step++;
+                            timeLeft--;
+                            const mins = Math.floor(timeLeft / 60);
+                            const secs = timeLeft % 60;
+                            document.getElementById('phase-timer').innerText = `Time Remaining: ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+                            if (timeLeft <= 0) {
+                                clearInterval(interval);
+                                isRunning = false;
+                                text.innerText = "🎉 Wonderful session! You are relaxed & centered.";
+                                circle.className = "breath-circle";
+                                circle.innerText = "Done";
+                                document.getElementById('start-btn').innerText = "🔄 Start Again";
+                                timeLeft = 120;
+                            }
+                        };
+                        cycle();
+                        interval = setInterval(cycle, 1000);
+                    }
+                </script>
+            </body>
+            </html>
+            """
+            components.html(breathing_html, height=360)
+
+        # -------------------------------------------------------------
+        # FEATURE 3: POSITIVE & MOTIVATIONAL STORIES
+        # -------------------------------------------------------------
+        with relax_tab3:
+            stories = [
+                {
+                    "title": "🌱 The Miracle of Gentle Strength",
+                    "subtitle": "Finding peace in every heartbeat",
+                    "text": "In a peaceful village at the foot of the hills, Ananya often felt tired during her second trimester. Her grandmother whispered: 'A seed does not rush to become a flower; it rests in the quiet earth and gathers nourishment.' Ananya took time each day to sit beneath the neem tree, listen to the breeze, and gently touch her belly. In those quiet moments, she realized that her body knew exactly what to do. She felt an overwhelming surge of love and confidence that carried her gracefully all the way to birth.",
+                    "takeaway": "💡 Moral: Rest is not wasted time; it is where your baby grows the strongest."
+                },
+                {
+                    "title": "❤️ A Mother’s Unstoppable Heart",
+                    "subtitle": "The quiet courage inside you",
+                    "text": "During a stormy monsoon week, Kavitha felt anxious about her delivery date. Her local ASHA sister Sunita held her hands and said: 'Every mother before you carried this sacred journey. You have the wisdom of generations in your heartbeat.' As Kavitha looked outside at the raindrops nourishing the green fields, she felt calm replace her worry. When her baby arrived healthy and crying with joy, she knew she had discovered a courage she never knew she possessed.",
+                    "takeaway": "💡 Moral: You are far stronger than your worries. Trust your inner maternal resilience."
+                },
+                {
+                    "title": "🌟 The Golden Whisper of New Life",
+                    "subtitle": "A message from your little one",
+                    "text": "Every evening when the village birds returned to their nests, Meera placed her palms over her tummy and softly sang traditional lullabies. Sometimes the baby gave gentle little kicks as if dancing to the melody. In that silence, the connection felt magical and pure. Motherhood is the only place where two hearts beat inside one body in complete harmony.",
+                    "takeaway": "💡 Moral: Your baby feels your love and calm today and every single day."
+                }
+            ]
+
+            story_idx = st.selectbox("Select Inspiring Story to Read:", [f"{s['title']} — {s['subtitle']}" for s in stories], key="sel_story")
+            selected_story = stories[[f"{s['title']} — {s['subtitle']}" for s in stories].index(story_idx)]
+
+            with st.container(border=True):
+                st.markdown(textwrap.dedent(f"""
+                    <div style="padding: 6px;">
+                        <h3 style="color: #0f172a; font-family: 'Outfit', sans-serif; font-size: 1.35rem; font-weight: 800; margin: 0 0 6px 0;">
+                            {selected_story['title']}
+                        </h3>
+                        <div style="color: #0284c7; font-weight: 700; font-size: 0.88rem; margin-bottom: 12px;">
+                            ✨ {selected_story['subtitle']}
+                        </div>
+                        <p style="color: #334155; font-size: 0.96rem; line-height: 1.7; font-style: italic; margin-bottom: 14px; background: #f8fafc; padding: 14px 18px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                            “{selected_story['text']}”
+                        </p>
+                        <div style="background: #fdf2f8; color: #9d174d; padding: 10px 14px; border-radius: 10px; font-weight: 700; font-size: 0.88rem; border: 1px solid #fbcfe8;">
+                            {selected_story['takeaway']}
+                        </div>
+                    </div>
+                """).strip(), unsafe_allow_html=True)
+
+        # -------------------------------------------------------------
+        # FEATURE 4: SIMPLE MINI GAMES (DE-STRESS BUBBLE POPPER)
+        # -------------------------------------------------------------
+        with relax_tab4:
+            st.markdown(textwrap.dedent("""
+                <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 14px; padding: 14px 18px; margin-bottom: 14px;">
+                    <h4 style="font-family: 'Outfit', sans-serif; color: #0369a1; margin: 0 0 4px 0; font-weight: 800;">
+                        🫧 Stress-Relief Bubble Popper & Zen Match
+                    </h4>
+                    <p style="color: #0284c7; font-size: 0.88rem; margin: 0;">
+                        Tap and pop the soothing bubbles to release stress and reveal uplifting pregnancy affirmations!
+                    </p>
+                </div>
+            """).strip(), unsafe_allow_html=True)
+
+            bubble_game_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 10px 0; background: transparent; text-align: center; }
+                    .game-box { background: white; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 4px 14px rgba(0,0,0,0.03); max-width: 500px; margin: 0 auto; }
+                    .bubble-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+                    .bubble { width: 68px; height: 68px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #a5f3fc, #0284c7); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.4rem; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 4px 10px rgba(2,132,199,0.25); border: 2px solid rgba(255,255,255,0.7); margin: 0 auto; user-select: none; }
+                    .bubble:hover { transform: scale(1.1); box-shadow: 0 6px 16px rgba(2,132,199,0.35); }
+                    .bubble.popped { transform: scale(0.7); background: #e2e8f0; opacity: 0.35; box-shadow: none; pointer-events: none; border-color: transparent; }
+                    .score-bar { font-size: 1.05rem; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+                    .affirmation-box { background: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 0.9rem; min-height: 22px; }
+                    .btn-reset { background: #0284c7; color: white; border: none; padding: 8px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.85rem; margin-top: 12px; }
+                </style>
+            </head>
+            <body>
+                <div class="game-box">
+                    <div class="score-bar">🫧 Bubbles Popped: <span id="pop-count" style="color: #0284c7;">0</span> / 12</div>
+                    <div class="affirmation-box" id="aff-text">Pop any bubble to release stress ✨</div>
+                    <div class="bubble-grid" id="grid"></div>
+                    <button class="btn-reset" onclick="resetGame()">🔄 Reset Bubbles</button>
+                </div>
+
+                <script>
+                    const affirmations = [
+                        "🌸 Beautiful Mama", "✨ Deep Calm", "💖 Pure Love", "🌟 Strong & Healthy", 
+                        "🕊️ Inner Peace", "🌈 Joyful Heart", "👶 Happy Baby", "🌼 Safe & Protected",
+                        "💫 Serenity", "🌿 Fresh Energy", "☀️ Warm Smiles", "❤️ Golden Future"
+                    ];
+                    let count = 0;
+
+                    function resetGame() {
+                        count = 0;
+                        document.getElementById('pop-count').innerText = "0";
+                        document.getElementById('aff-text').innerText = "Pop any bubble to release stress ✨";
+                        const grid = document.getElementById('grid');
+                        grid.innerHTML = "";
+                        for (let i = 0; i < 12; i++) {
+                            const b = document.createElement('div');
+                            b.className = "bubble";
+                            b.innerHTML = "🫧";
+                            b.onclick = function() {
+                                if (!b.classList.contains('popped')) {
+                                    b.classList.add('popped');
+                                    b.innerHTML = "✨";
+                                    count++;
+                                    document.getElementById('pop-count').innerText = count;
+                                    document.getElementById('aff-text').innerText = affirmations[i % affirmations.length];
+                                }
+                            };
+                            grid.appendChild(b);
+                        }
+                    }
+                    resetGame();
+                </script>
+            </body>
+            </html>
+            """
+            components.html(bubble_game_html, height=390)
+
+        # -------------------------------------------------------------
+        # FEATURE 5: COLOR & CREATIVITY (ZEN MANDALA PALETTE)
+        # -------------------------------------------------------------
+        with relax_tab5:
+            st.markdown(textwrap.dedent("""
+                <div style="background: #fdf4ff; border: 1.5px solid #f0abfc; border-radius: 14px; padding: 14px 18px; margin-bottom: 14px;">
+                    <h4 style="font-family: 'Outfit', sans-serif; color: #86198f; margin: 0 0 4px 0; font-weight: 800;">
+                        🎨 Maternal Zen Mandala Coloring Canvas
+                    </h4>
+                    <p style="color: #a21caf; font-size: 0.88rem; margin: 0;">
+                        Pick a soothing pastel color and click the mandala petals to create your own meditative masterpiece.
+                    </p>
+                </div>
+            """).strip(), unsafe_allow_html=True)
+
+            mandala_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 10px 0; background: transparent; text-align: center; }
+                    .mandala-box { background: white; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 4px 14px rgba(0,0,0,0.03); max-width: 480px; margin: 0 auto; }
+                    .palette { display: flex; justify-content: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+                    .color-swatch { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: transform 0.15s ease; }
+                    .color-swatch:hover, .color-swatch.active { transform: scale(1.25); border: 2.5px solid #0f172a; }
+                    .svg-canvas { width: 230px; height: 230px; margin: 0 auto; cursor: pointer; }
+                    .petal { transition: fill 0.25s ease; }
+                    .petal:hover { opacity: 0.85; }
+                    .btn-action { background: #86198f; color: white; border: none; padding: 8px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.85rem; margin-top: 14px; }
+                </style>
+            </head>
+            <body>
+                <div class="mandala-box">
+                    <div style="font-weight: 700; color: #0f172a; font-size: 0.9rem; margin-bottom: 8px;">Select Color Shade:</div>
+                    <div class="palette" id="palette"></div>
                     
-                with c2:
-                    st.plotly_chart(fig, use_container_width=True)
+                    <svg class="svg-canvas" viewBox="0 0 200 200">
+                        <circle cx="100" cy="100" r="95" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+                        <!-- Petals Layer 1 -->
+                        <path class="petal" d="M100,100 Q80,40 100,20 Q120,40 100,100" fill="#fbcfe8" stroke="#db2777" stroke-width="1.5" onclick="paint(this)"/>
+                        <path class="petal" d="M100,100 Q40,80 20,100 Q40,120 100,100" fill="#bae6fd" stroke="#0284c7" stroke-width="1.5" onclick="paint(this)"/>
+                        <path class="petal" d="M100,100 Q80,160 100,180 Q120,160 100,100" fill="#bbf7d0" stroke="#16a34a" stroke-width="1.5" onclick="paint(this)"/>
+                        <path class="petal" d="M100,100 Q160,80 180,100 Q160,120 100,100" fill="#fde047" stroke="#ca8a04" stroke-width="1.5" onclick="paint(this)"/>
+                        <!-- Petals Diagonal -->
+                        <path class="petal" d="M100,100 Q50,50 40,40 Q60,60 100,100" fill="#fed7aa" stroke="#ea580c" stroke-width="1.5" onclick="paint(this)"/>
+                        <path class="petal" d="M100,100 Q150,50 160,40 Q140,60 100,100" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.5" onclick="paint(this)"/>
+                        <path class="petal" d="M100,100 Q50,150 40,160 Q60,140 100,100" fill="#f5d0fe" stroke="#c026d3" stroke-width="1.5" onclick="paint(this)"/>
+                        <path class="petal" d="M100,100 Q150,150 160,160 Q140,140 100,100" fill="#a7f3d0" stroke="#059669" stroke-width="1.5" onclick="paint(this)"/>
+                        <!-- Center Jewel -->
+                        <circle class="petal" cx="100" cy="100" r="18" fill="#f43f5e" stroke="#be123c" stroke-width="2" onclick="paint(this)"/>
+                        <circle class="petal" cx="100" cy="100" r="8" fill="#ffffff" onclick="paint(this)"/>
+                    </svg>
                     
-        else:
-            # Default state before clicking button
-            with dashboard_placeholder.container():
-                st.info(_t("click_start_ai_info"))
+                    <div>
+                        <button class="btn-action" onclick="resetMandala()">✨ Reset Colors</button>
+                    </div>
+                </div>
+
+                <script>
+                    const colors = ["#f43f5e", "#ec4899", "#8b5cf6", "#3b82f6", "#06b6d4", "#10b981", "#84cc16", "#eab308", "#f97316", "#ffffff"];
+                    let selectedColor = colors[0];
+
+                    const pal = document.getElementById('palette');
+                    colors.forEach((col, idx) => {
+                        const s = document.createElement('div');
+                        s.className = "color-swatch" + (idx === 0 ? " active" : "");
+                        s.style.backgroundColor = col;
+                        s.onclick = () => {
+                            document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('active'));
+                            s.classList.add('active');
+                            selectedColor = col;
+                        };
+                        pal.appendChild(s);
+                    });
+
+                    function paint(el) {
+                        el.setAttribute('fill', selectedColor);
+                    }
+
+                    function resetMandala() {
+                        document.querySelectorAll('.petal').forEach(el => el.setAttribute('fill', '#ffffff'));
+                    }
+                </script>
+            </body>
+            </html>
+            """
+            components.html(mandala_html, height=380)
 
     elif page == "Live Location & Map":
         import folium
@@ -3574,20 +4029,53 @@ def mother_dashboard():
         from streamlit_folium import st_folium
         from geopy.distance import geodesic
         from streamlit_geolocation import streamlit_geolocation
-        st.title(_t("map_title_page"))
-        st.markdown(_t("map_desc_page"))
+        
+        st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <h1 style="font-family: 'Outfit', sans-serif; color: #0f172a; font-weight: 800; font-size: 2.2rem; margin: 0;">
+                        📍 {_t('map_title_page')}
+                    </h1>
+                    <p style="color: #64748b; font-size: 1rem; margin: 4px 0 0 0;">
+                        {_t('map_desc_page')}
+                    </p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         
         online_status = is_online()
         mother_id = st.session_state.get('unique_id', 'Unknown')
+        
+        # -------------------------------------------------------------
+        # 1. IMMEDIATE GPS ACQUISITION & LOCATION CONTROLS
+        # -------------------------------------------------------------
+        gps_col1, gps_col2 = st.columns([1.8, 1.2])
+        
+        with gps_col1:
+            st.markdown("""
+                <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-top: 4px solid #0284c7; border-radius: 14px; padding: 14px 18px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.05); margin-bottom: 12px;">
+                    <div style="font-weight: 800; color: #0f172a; font-size: 0.95rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <span>🛰️</span> Live GPS Location Sensor
+                    </div>
+                    <p style="color: #64748b; font-size: 0.84rem; margin: 0 0 8px 0;">
+                        Click the sensor button below to capture your real-time browser GPS coordinates.
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
             
-        # Capture GPS
-        loc = streamlit_geolocation()
+            # Geolocation Widget
+            loc = streamlit_geolocation()
+            
         lat, lon = None, None
+        
+        # If user selected a preset or manual override in session state
+        preset_coords = st.session_state.get("custom_patient_coords")
         
         if loc and loc.get('latitude') and loc.get('longitude'):
             lat = float(loc['latitude'])
             lon = float(loc['longitude'])
-            st.success(_t("success_loc_captured"))
+            st.session_state["live_gps_captured"] = True
+            st.session_state["custom_patient_coords"] = None
             
             if online_status:
                 if mother_id != 'Unknown':
@@ -3599,13 +4087,15 @@ def mother_dashboard():
                 payload = {"latitude": lat, "longitude": lon, "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 from database import save_offline_record
                 save_offline_record(mother_id, "location", json.dumps(payload))
+        elif preset_coords:
+            lat, lon = preset_coords
         else:
             # Attempt to retrieve saved coordinates from database
             if mother_id != 'Unknown':
                 try:
                     conn = get_connection()
                     c = conn.cursor()
-                    c.execute("SELECT latitude, longitude FROM mothers WHERE unique_id=?", (mother_id,))
+                    c.execute("SELECT latitude, longitude, village FROM users WHERE role='Mother' AND unique_id=?", (mother_id,))
                     row = c.fetchone()
                     conn.close()
                     if row and row[0] is not None and row[1] is not None:
@@ -3613,9 +4103,87 @@ def mother_dashboard():
                 except Exception:
                     pass
             
-            # Default fallback coordinates (Moinabad Sector cluster) if GPS not yet granted
+            # Default fallback coordinates (Telangana / Rural Health Cluster) if GPS not yet granted
             if lat is None or lon is None:
-                lat, lon = 17.3200, 78.2800
+                lat, lon = 17.3850, 78.4867
+
+        with gps_col2:
+            st.markdown(f"""
+                <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 14px; padding: 14px 18px; margin-bottom: 12px;">
+                    <div style="font-size: 0.78rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Active Coordinates</div>
+                    <div style="font-size: 1.1rem; font-weight: 800; color: #0284c7; margin: 4px 0 2px 0;">
+                        {lat:.4f}° N, {lon:.4f}° E
+                    </div>
+                    <div style="font-size: 0.8rem; color: #16a34a; font-weight: 700;">
+                        ● High-Precision Geolocation Active
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+        # Optional preset location changer for testing/offline
+        with st.expander("⚙️ Quick Location Selector & Presets (Change Village or Enter Coordinates)"):
+            c_p1, c_p2 = st.columns([2, 1])
+            with c_p1:
+                loc_preset = st.selectbox(
+                    "Switch location to registered health sector:",
+                    options=[
+                        "Default / Current Live GPS",
+                        "Rampur (Lat: 17.3850, Lon: 78.4867)",
+                        "Sitapur (Lat: 17.4010, Lon: 78.4720)",
+                        "Chandrapur (Lat: 17.3700, Lon: 78.5000)",
+                        "Bharatpur (Lat: 17.4200, Lon: 78.4500)",
+                        "Janakpur (Lat: 17.3900, Lon: 78.5200)"
+                    ],
+                    key="sel_loc_preset"
+                )
+                if st.button("Apply Selected Preset Location"):
+                    if "Rampur" in loc_preset:
+                        st.session_state["custom_patient_coords"] = (17.3850, 78.4867)
+                    elif "Sitapur" in loc_preset:
+                        st.session_state["custom_patient_coords"] = (17.4010, 78.4720)
+                    elif "Chandrapur" in loc_preset:
+                        st.session_state["custom_patient_coords"] = (17.3700, 78.5000)
+                    elif "Bharatpur" in loc_preset:
+                        st.session_state["custom_patient_coords"] = (17.4200, 78.4500)
+                    elif "Janakpur" in loc_preset:
+                        st.session_state["custom_patient_coords"] = (17.3900, 78.5200)
+                    else:
+                        st.session_state["custom_patient_coords"] = None
+                    st.rerun()
+
+        # -------------------------------------------------------------
+        # 2. GOOGLE MAPS POWER BAR
+        # -------------------------------------------------------------
+        gmap_search_all_url = f"https://www.google.com/maps/search/hospitals/@{lat},{lon},14z"
+        gmap_maternity_url = f"https://www.google.com/maps/search/maternity+hospital+emergency/@{lat},{lon},14z"
+        gmap_my_loc_url = f"https://maps.google.com/?q={lat:.5f},{lon:.5f}"
+        
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 1.5px solid #7dd3fc; border-radius: 16px; padding: 18px 22px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(2, 132, 199, 0.08);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.4rem;">🗺️</span>
+                            <span style="font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.25rem; color: #0369a1;">Google Maps Healthcare Navigator</span>
+                        </div>
+                        <p style="margin: 4px 0 0 0; color: #0284c7; font-size: 0.9rem; font-weight: 600;">
+                            Access all hospitals, Primary Health Centres (PHC), Community Health Centres (CHC), and emergency maternity care around your current live location.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <a href="{gmap_search_all_url}" target="_blank" style="background: #0284c7; color: white; font-weight: 800; font-size: 0.88rem; padding: 10px 18px; border-radius: 10px; text-decoration: none; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3); display: inline-flex; align-items: center; gap: 6px;">
+                            🏥 Search All Nearby Hospitals on Google Maps ➔
+                        </a>
+                        <a href="{gmap_maternity_url}" target="_blank" style="background: #dc2626; color: white; font-weight: 800; font-size: 0.88rem; padding: 10px 18px; border-radius: 10px; text-decoration: none; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3); display: inline-flex; align-items: center; gap: 6px;">
+                            🚨 Emergency Maternity on Google Maps ➔
+                        </a>
+                        <a href="{gmap_my_loc_url}" target="_blank" style="background: #ffffff; color: #0f172a; border: 1.5px solid #cbd5e1; font-weight: 700; font-size: 0.88rem; padding: 10px 16px; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                            📍 Open My Live Pin ➔
+                        </a>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         # Check latest risk level from daily logs
         conn = get_connection()
@@ -3771,17 +4339,18 @@ def mother_dashboard():
             h_lat = lat + h["offset_lat"]
             h_lon = lon + h["offset_lon"]
             dist = geodesic((lat, lon), (h_lat, h_lon)).km
-            if dist <= 10.0:
+            if dist <= 12.0:
                 h_copy = dict(h)
                 h_copy["lat"] = h_lat
                 h_copy["lon"] = h_lon
                 h_copy["distance"] = round(dist, 1)
                 h_copy["eta_mins"] = max(4, int(dist * 2.2))
+                h_copy["gmap_directions_url"] = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={h_lat},{h_lon}"
+                h_copy["gmap_search_url"] = f"https://www.google.com/maps/search/?api=1&query={h_lat},{h_lon}"
                 hospitals_within_10km.append(h_copy)
 
         # Sort by proximity
         hospitals_within_10km.sort(key=lambda x: x["distance"])
-
         nearest_hosp = hospitals_within_10km[0] if hospitals_within_10km else None
 
         # Display Top Status Banner
@@ -3792,7 +4361,7 @@ def mother_dashboard():
                     <span style="font-size: 1.5rem;">🚨</span>
                     <div>
                         <div style="color: #991b1b; font-weight: 800; font-size: 1rem;">High-Risk Priority Alert Active</div>
-                        <div style="color: #b91c1c; font-size: 0.88rem; margin-top: 2px;">Emergency obstetric surgical centres and blood banks within 10 km are highlighted in red. Tap below to call emergency services or navigate immediately.</div>
+                        <div style="color: #b91c1c; font-size: 0.88rem; margin-top: 2px;">Emergency obstetric surgical centres and blood banks within 10 km are highlighted in red. Tap below to navigate immediately on Google Maps or call emergency services.</div>
                     </div>
                 </div>
             </div>
@@ -3803,8 +4372,8 @@ def mother_dashboard():
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="font-size: 1.5rem;">🏥</span>
                     <div>
-                        <div style="color: #0369a1; font-weight: 800; font-size: 1rem;">Verified Healthcare Network Within 10 km</div>
-                        <div style="color: #0284c7; font-size: 0.88rem; margin-top: 2px;">Your nearest health center is <b>{nearest_hosp['name']}</b> ({nearest_hosp['distance']} km away). Click on any hospital pin or selector below to view phone numbers, duty doctors, and facilities.</div>
+                        <div style="color: #0369a1; font-weight: 800; font-size: 1rem;">Nearest Primary Health Centre: <b>{nearest_hosp['name']}</b> ({nearest_hosp['distance']} km away)</div>
+                        <div style="color: #0284c7; font-size: 0.88rem; margin-top: 2px;">Estimated travel time is approx <b>{nearest_hosp['eta_mins']} minutes</b>. Click on any hospital pin or the Google Maps navigation buttons below for real-time turn-by-turn routing.</div>
                     </div>
                 </div>
             </div>
@@ -3815,16 +4384,17 @@ def mother_dashboard():
 
         # Mother's Current GPS Location Marker
         mother_popup_html = f"""
-        <div style="font-family: 'Segoe UI', sans-serif; font-size: 12px; min-width: 160px;">
+        <div style="font-family: 'Segoe UI', sans-serif; font-size: 12px; min-width: 170px;">
             <b style="color: #0284c7; font-size: 13px;">📍 Your Live Location</b><br>
             <span style="color: #64748b;">Mother ID: {mother_id}</span><br>
-            <span style="color: #64748b;">GPS: {lat:.4f}, {lon:.4f}</span>
+            <span style="color: #64748b;">GPS: {lat:.4f}, {lon:.4f}</span><br><br>
+            <a href="{gmap_my_loc_url}" target="_blank" style="display: block; background: #0284c7; color: white; text-align: center; padding: 4px 6px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: bold;">🗺️ Open in Google Maps</a>
         </div>
         """
         folium.Marker(
             [lat, lon],
             popup=folium.Popup(mother_popup_html, max_width=220),
-            tooltip="📍 Your Current GPS Location (Mother)",
+            tooltip="📍 Your Current Live Location",
             icon=folium.Icon(color="blue", icon="user")
         ).add_to(m)
 
@@ -3857,7 +4427,7 @@ def mother_dashboard():
             marker_icon = "plus" if (is_high_risk or h.get("is_emergency")) else "medkit"
 
             popup_html = f"""
-            <div style="font-family: 'Segoe UI', Arial, sans-serif; min-width: 220px; padding: 4px;">
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; min-width: 230px; padding: 4px;">
                 <b style="color: #0b5394; font-size: 13px;">{h['name']}</b><br>
                 <span style="font-size: 11px; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-weight: bold;">{h['type']}</span><br>
                 <div style="margin-top: 6px; font-size: 12px; color: #334155; line-height: 1.5;">
@@ -3866,15 +4436,16 @@ def mother_dashboard():
                     <b>👩‍⚕️ Doctor:</b> {h['duty_doctor']}<br>
                     <b>🚑 Emergency:</b> {h['emergency_phone']}
                 </div>
-                <div style="margin-top: 8px;">
-                    <a href="https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={h['lat']},{h['lon']}" target="_blank" style="display: block; background: #0284c7; color: white; text-align: center; padding: 5px 8px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: bold;">🗺️ Open in Google Maps</a>
+                <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+                    <a href="{h['gmap_directions_url']}" target="_blank" style="display: block; background: #0284c7; color: white; text-align: center; padding: 6px 8px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: bold;">🧭 Start Google Maps Directions</a>
+                    <a href="tel:{h['phone']}" style="display: block; background: #16a34a; color: white; text-align: center; padding: 5px 8px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: bold;">📞 Call Hospital</a>
                 </div>
             </div>
             """
 
             folium.Marker(
                 [h["lat"], h["lon"]],
-                popup=folium.Popup(popup_html, max_width=280),
+                popup=folium.Popup(popup_html, max_width=290),
                 tooltip=f"🏥 {h['name']} ({h['distance']} km)",
                 icon=folium.Icon(color=marker_color, icon=marker_icon)
             ).add_to(m)
@@ -3892,10 +4463,12 @@ def mother_dashboard():
                         st.session_state["selected_hospital_id"] = h["id"]
                         break
 
-        # Hospital Selection Section
-        st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-        st.markdown("### 🏥 Hospital Details & Contact Information")
-        st.markdown("<p style='color: #64748b; font-size: 0.95rem; margin-top: -8px;'>Click on any hospital marker on the map above, or select from the options below to view phone numbers, duty doctors, and facilities within 10 km:</p>", unsafe_allow_html=True)
+        # -------------------------------------------------------------
+        # 3. DIRECT GOOGLE MAPS NAVIGATION & HOSPITAL DOSSIER
+        # -------------------------------------------------------------
+        st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+        st.markdown("### 🏥 Nearby Hospitals & Instant Google Maps Routing")
+        st.markdown("<p style='color: #64748b; font-size: 0.95rem; margin-top: -8px;'>Select any healthcare facility below for instant Google Maps navigation, direct phone calling, and doctor on-duty details:</p>", unsafe_allow_html=True)
 
         hospital_names = [f"{h['name']} ({h['distance']} km away)" for h in hospitals_within_10km]
         
@@ -3940,21 +4513,29 @@ def mother_dashboard():
 
         # Detailed Hospital Information Card
         with st.container(border=True):
-            head_col1, head_col2 = st.columns([3, 1])
+            head_col1, head_col2 = st.columns([2.5, 1.5])
             with head_col1:
-                st.markdown(f"""<div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap;">
-<span style="background: #0284c7; color: #ffffff; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 6px;">{selected_hosp['type']}</span>
-<span style="background: #e0f2fe; color: #0369a1; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 6px; border: 1px solid #bae6fd;">📍 {selected_hosp['distance']} km from your location (approx. {selected_hosp['eta_mins']} mins travel)</span>
-<span style="background: #ecfdf5; color: #059669; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 6px; border: 1px solid #a7f3d0;">🟢 {selected_hosp['hours']}</span>
-</div>
-<h2 style="margin: 0; font-size: 1.55rem; color: #0f172a; font-family: 'Outfit', sans-serif; font-weight: 800;">{selected_hosp['name']}</h2>
-<p style="margin: 6px 0 0 0; color: #475569; font-size: 0.95rem; font-weight: 500;">🏢 {selected_hosp['address']}</p>""", unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap;">
+                        <span style="background: #0284c7; color: #ffffff; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 6px;">{selected_hosp['type']}</span>
+                        <span style="background: #e0f2fe; color: #0369a1; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 6px; border: 1px solid #bae6fd;">📍 {selected_hosp['distance']} km away (~{selected_hosp['eta_mins']} mins)</span>
+                        <span style="background: #ecfdf5; color: #059669; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 6px; border: 1px solid #a7f3d0;">🟢 {selected_hosp['hours']}</span>
+                    </div>
+                    <h2 style="margin: 0; font-size: 1.55rem; color: #0f172a; font-family: 'Outfit', sans-serif; font-weight: 800;">{selected_hosp['name']}</h2>
+                    <p style="margin: 6px 0 0 0; color: #475569; font-size: 0.95rem; font-weight: 500;">🏢 {selected_hosp['address']}</p>
+                """, unsafe_allow_html=True)
             
             with head_col2:
-                st.markdown(f"""<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
-<a href="tel:{selected_hosp['phone']}" style="background: #16a34a; color: white; font-weight: 700; padding: 10px 14px; border-radius: 10px; text-decoration: none; display: block; text-align: center; font-size: 0.92rem; box-shadow: 0 2px 6px rgba(22,163,74,0.25);">📞 Call Hospital</a>
-<a href="https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={selected_hosp['lat']},{selected_hosp['lon']}" target="_blank" style="background: #0284c7; color: white; font-weight: 700; padding: 10px 14px; border-radius: 10px; text-decoration: none; display: block; text-align: center; font-size: 0.92rem; box-shadow: 0 2px 6px rgba(2,132,199,0.25);">🗺️ Get Directions</a>
-</div>""", unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+                        <a href="{selected_hosp['gmap_directions_url']}" target="_blank" style="background: #0284c7; color: white; font-weight: 800; padding: 12px 16px; border-radius: 10px; text-decoration: none; display: block; text-align: center; font-size: 0.95rem; box-shadow: 0 4px 12px rgba(2,132,199,0.3);">
+                            🗺️ Start Google Maps Directions ➔
+                        </a>
+                        <a href="tel:{selected_hosp['phone']}" style="background: #16a34a; color: white; font-weight: 700; padding: 10px 14px; border-radius: 10px; text-decoration: none; display: block; text-align: center; font-size: 0.92rem; box-shadow: 0 2px 6px rgba(22,163,74,0.25);">
+                            📞 Call Hospital Reception
+                        </a>
+                    </div>
+                """, unsafe_allow_html=True)
 
             st.divider()
 
@@ -3985,13 +4566,42 @@ def mother_dashboard():
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             fac_badges = "".join([f"<span style='display: inline-block; background: #f0fdf4; color: #166534; font-size: 0.84rem; font-weight: 700; padding: 6px 14px; border-radius: 8px; border: 1px solid #bbf7d0; margin: 4px 4px 4px 0;'>✓ {fac}</span>" for fac in selected_hosp['facilities']])
-            st.markdown(f"""<div>
-<div style="font-size: 0.88rem; font-weight: 800; color: #334155; margin-bottom: 8px;">🏥 Available Medical Facilities & Maternity Services:</div>
-<div style="display: flex; gap: 8px; flex-wrap: wrap;">{fac_badges}</div>
-</div>""", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div>
+                    <div style="font-size: 0.88rem; font-weight: 800; color: #334155; margin-bottom: 8px;">🏥 Available Medical Facilities & Maternity Services:</div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">{fac_badges}</div>
+                </div>
+            """, unsafe_allow_html=True)
 
-        # Direct Call Action Buttons
-        st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+        # -------------------------------------------------------------
+        # 4. ALL HOSPITALS DIRECT GOOGLE MAPS TABLE / ACTION GRID
+        # -------------------------------------------------------------
+        st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+        st.markdown("### 🗺️ All Nearby Healthcare Centers Directory")
+        
+        for h in hospitals_within_10km:
+            with st.container(border=True):
+                h_c1, h_c2, h_c3 = st.columns([3, 1.2, 1.5])
+                with h_c1:
+                    st.markdown(f"""
+                        <div style="font-weight: 800; font-size: 1.08rem; color: #0f172a;">{h['name']}</div>
+                        <div style="color: #64748b; font-size: 0.85rem;">{h['address']} • <b>Doctor:</b> {h['duty_doctor']}</div>
+                    """, unsafe_allow_html=True)
+                with h_c2:
+                    st.markdown(f"""
+                        <div style="color: #0284c7; font-weight: 800; font-size: 1.05rem;">📍 {h['distance']} km</div>
+                        <div style="color: #16a34a; font-size: 0.8rem; font-weight: 700;">~{h['eta_mins']} mins ETA</div>
+                    """, unsafe_allow_html=True)
+                with h_c3:
+                    st.markdown(f"""
+                        <div style="display: flex; gap: 6px;">
+                            <a href="{h['gmap_directions_url']}" target="_blank" style="background: #0284c7; color: white; padding: 7px 12px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.82rem; display: inline-block;">🗺️ Directions</a>
+                            <a href="tel:{h['phone']}" style="background: #16a34a; color: white; padding: 7px 10px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.82rem; display: inline-block;">📞 Call</a>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+        # Direct Emergency Call Action Buttons
+        st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
         act_col1, act_col2, act_col3 = st.columns(3)
         with act_col1:
             st.markdown(f'<a href="tel:{selected_hosp["phone"]}" style="display:block; text-align:center; background:#16a34a; color:white; padding:12px 14px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:0.95rem; box-shadow:0 2px 6px rgba(22,163,74,0.2);">📞 Call {selected_hosp["name"][:22]}... ({selected_hosp["phone"]})</a>', unsafe_allow_html=True)
@@ -4110,13 +4720,14 @@ def mother_dashboard():
             
         st.info("💡 Pro Tip: Your baby's development is unique. Always follow the advice of your doctor and ASHA worker.")
 
-    elif page == "Exercise Coach":
-        st.title(_t("prog_7_day_title"))
-        st.markdown(_t("prog_7_day_desc"))
-        st.warning(_t("exercise_safety_warning"))
-        
+    elif page in ["Exercise Coach", "Exercise Plan"]:
         from database import log_exercise, get_mother_exercise_logs
-        
+        import streamlit.components.v1 as components
+        import textwrap
+
+        def render_html(html_str):
+            st.markdown(textwrap.dedent(html_str).strip(), unsafe_allow_html=True)
+
         mother_id = st.session_state.get('unique_id', 'Unknown')
         
         # Helper inner function to handle logging
@@ -4176,24 +4787,6 @@ def mother_dashboard():
         with st.expander(_t("ex_lib_title")):
             lib_col1, lib_col2 = st.columns(2)
             with lib_col1:
-<<<<<<< HEAD
-                st.video("assets/ex_butterfly.mp4", format="video/mp4")
-                st.markdown(f"**{_t('ex_butterfly')}**\n{_t('expl_butterfly')}")
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                st.video("assets/ex_duck_walk.mp4", format="video/mp4")
-                st.markdown(f"**{_t('ex_duck_walk')}**\n{_t('expl_duck_walk')}")
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                st.video("assets/ex_squats.mp4", format="video/mp4")
-                st.markdown(f"**{_t('ex_squats')}**\n{_t('expl_squats')}")
-            with lib_col2:
-                st.video("assets/ex_hip_rotation.mp4", format="video/mp4")
-                st.markdown(f"**{_t('ex_hip_rotation')}**\n{_t('expl_hip_rotation')}")
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                st.video("assets/ex_side_lunges.mp4", format="video/mp4")
-=======
                 st.image("assets/ex_butterfly.png", use_container_width=True)
                 st.markdown(f"**{_t('ex_butterfly')}**\n{_t('expl_butterfly')}")
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -4210,7 +4803,6 @@ def mother_dashboard():
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 st.image("assets/ex_side_lunges.png", use_container_width=True)
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
                 st.markdown(f"**{_t('ex_side_lunges')}**\n{_t('expl_side_lunges')}")
         
         # Progress Tracker
@@ -5055,6 +5647,20 @@ def asha_worker_dashboard():
             if st.button(f"{icon} {label}", use_container_width=True, type="secondary" if st.session_state['asha_page'] != key else "primary"):
                 st.session_state['asha_page'] = key
                 
+        st.markdown("<p style='color: #888; font-size: 0.8rem; font-weight: bold; margin-top: 15px;'>HEALTH SERVICES (DEMO)</p>", unsafe_allow_html=True)
+        sih_nav = {
+            "Facility Directory": ("Facility Directory", "🏥"),
+            "Appointments": ("Appointments", "📅"),
+            "Queue Management": ("Queue Management", "🎫"),
+            "Referrals": ("Closed-Loop Referrals", "🔄"),
+            "Teleconsultations": ("Teleconsultation", "💻"),
+            "Availability": ("Medicine & Diagnostics", "💊"),
+            "Patient Timeline": ("Patient Timeline", "⏳")
+        }
+        for key, (label, icon) in sih_nav.items():
+            if st.button(f"{icon} {label}", use_container_width=True, type="secondary" if st.session_state['asha_page'] != key else "primary"):
+                st.session_state['asha_page'] = key
+                
         st.divider()
         cur_lang = st.session_state.get('language', 'English')
         st.selectbox("🌐 " + _t("lang_toggle"), SUPPORTED_LANGUAGES, index=SUPPORTED_LANGUAGES.index(cur_lang) if cur_lang in SUPPORTED_LANGUAGES else 0, key="lang_toggle_asha", on_change=lambda: st.session_state.update({"language": st.session_state.lang_toggle_asha}))
@@ -5071,6 +5677,11 @@ def asha_worker_dashboard():
             if st.button("⬅ Back to Dashboard Overview", key=f"asha_subpage_back_{page}", use_container_width=True):
                 st.session_state['asha_page'] = "Dashboard Overview"
                 st.rerun()
+
+    if page in ["Facility Directory", "Appointments", "Queue Management", "Referrals", "Teleconsultations", "Availability", "Patient Timeline"] and render_sih_page is not None:
+        render_sih_page(page, role="ASHA Worker")
+        return
+
     import pandas as pd
     
     # Fetch real data (cached for lightning-fast tab navigation)
@@ -5991,6 +6602,21 @@ def supervisor_dashboard():
             if st.button(f"{icon} {lbl}", use_container_width=True, type="primary" if cur_page == k else "secondary", key=f"sup_btn_{k}"):
                 st.session_state['supervisor_page'] = k
                 
+        st.markdown("<p style='color: #888; font-size: 0.8rem; font-weight: bold; margin-top: 15px;'>HEALTH SERVICES (DEMO)</p>", unsafe_allow_html=True)
+        sih_nav = {
+            "Facility Directory": ("Facility Directory", "🏥"),
+            "Appointments": ("Appointments", "📅"),
+            "Queue Management": ("Queue Management", "🎫"),
+            "Referrals": ("Closed-Loop Referrals", "🔄"),
+            "Teleconsultations": ("Teleconsultation", "💻"),
+            "Availability": ("Medicine & Diagnostics", "💊"),
+            "Patient Timeline": ("Patient Timeline", "⏳"),
+            "FHIR Export": ("FHIR Export", "📄")
+        }
+        for key, (label, icon) in sih_nav.items():
+            if st.button(f"{icon} {label}", use_container_width=True, type="secondary" if cur_page != key else "primary", key=f"sup_btn_sih_{key}"):
+                st.session_state['supervisor_page'] = key
+                
         st.divider()
         cur_lang = st.session_state.get('language', 'English')
         st.selectbox("🌐 " + _t("lang_toggle"), SUPPORTED_LANGUAGES, index=SUPPORTED_LANGUAGES.index(cur_lang) if cur_lang in SUPPORTED_LANGUAGES else 0, key="sup_lang_toggle", on_change=lambda: st.session_state.update({"language": st.session_state.sup_lang_toggle}))
@@ -6007,7 +6633,11 @@ def supervisor_dashboard():
             if st.button("⬅ Back to District Overview", key=f"sup_subpage_back_{page}", use_container_width=True):
                 st.session_state['supervisor_page'] = "District Overview"
                 st.rerun()
-    
+
+    if page in ["Facility Directory", "Appointments", "Queue Management", "Referrals", "Teleconsultations", "Availability", "Patient Timeline", "FHIR Export"] and render_sih_page is not None:
+        render_sih_page(page, role="Supervisor")
+        return
+        
     # Top banner
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 50%, #e0e7ff 100%); padding: 22px 26px; border-radius: 18px; border: 1.5px solid #c7d2fe; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.06); margin-bottom: 20px;">
