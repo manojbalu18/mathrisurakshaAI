@@ -175,7 +175,6 @@ def init_db():
     )
     """)
 
-<<<<<<< HEAD
     # Community Health Screenings Table (for General Village Community Healthcare)
     c.execute("""
     CREATE TABLE IF NOT EXISTS community_screenings (
@@ -232,8 +231,6 @@ def init_db():
     )
     """)
 
-=======
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
     # Performance indices to ensure instant query execution
     try:
         c.execute("CREATE INDEX IF NOT EXISTS idx_users_uid ON users(unique_id);")
@@ -243,13 +240,10 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_vax_mid ON vaccinations(mother_id);")
         c.execute("CREATE INDEX IF NOT EXISTS idx_ex_mid ON exercise_logs(mother_id);")
         c.execute("CREATE INDEX IF NOT EXISTS idx_case_actions_mid ON case_actions(mother_id);")
-<<<<<<< HEAD
         c.execute("CREATE INDEX IF NOT EXISTS idx_comm_scr_v ON community_screenings(village);")
         c.execute("CREATE INDEX IF NOT EXISTS idx_comm_scr_r ON community_screenings(overall_risk);")
         c.execute("CREATE INDEX IF NOT EXISTS idx_comm_con_v ON community_consultations(village);")
         c.execute("CREATE INDEX IF NOT EXISTS idx_comm_con_p ON community_consultations(patient_name);")
-=======
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
     except sqlite3.OperationalError:
         pass
 
@@ -257,7 +251,6 @@ def init_db():
     conn.close()
     _db_initialized = True
 
-<<<<<<< HEAD
     # Auto-seed initial demo records if table is fresh
     try:
         seed_community_screening_demo_data()
@@ -268,9 +261,6 @@ def init_db():
         seed_community_consultations_demo_data()
     except Exception:
         pass
-
-=======
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
 
 # ---------------- REGISTER MOTHER ----------------
 def register_mother(unique_id, name, phone, village):
@@ -798,7 +788,6 @@ def get_latest_exercise_log_for_all_mothers():
     """)
     logs = c.fetchall()
     conn.close()
-<<<<<<< HEAD
     return logs
 
 
@@ -1464,6 +1453,3 @@ def seed_community_consultations_demo_data():
 
     for item in demo_consultations:
         save_community_consultation(item)
-=======
-    return logs
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e

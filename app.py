@@ -115,13 +115,11 @@ def process_offline_sync():
                 elif feature == "location":
                     from database import update_location
                     update_location(user_id, payload['latitude'], payload['longitude'])
-<<<<<<< HEAD
+
                 elif feature == "community_screening":
                     from database import save_community_screening
                     payload['sync_status'] = "Synced"
                     save_community_screening(payload)
-=======
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
                 
                 # After successful sync, delete the offline record
                 delete_sync_record(rec_id)
@@ -4787,6 +4785,22 @@ def mother_dashboard():
         with st.expander(_t("ex_lib_title")):
             lib_col1, lib_col2 = st.columns(2)
             with lib_col1:
+                st.video("assets/ex_butterfly.mp4", format="video/mp4")
+                st.markdown(f"**{_t('ex_butterfly')}**\n{_t('expl_butterfly')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.video("assets/ex_duck_walk.mp4", format="video/mp4")
+                st.markdown(f"**{_t('ex_duck_walk')}**\n{_t('expl_duck_walk')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.video("assets/ex_squats.mp4", format="video/mp4")
+                st.markdown(f"**{_t('ex_squats')}**\n{_t('expl_squats')}")
+            with lib_col2:
+                st.video("assets/ex_hip_rotation.mp4", format="video/mp4")
+                st.markdown(f"**{_t('ex_hip_rotation')}**\n{_t('expl_hip_rotation')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.video("assets/ex_side_lunges.mp4", format="video/mp4")
                 st.image("assets/ex_butterfly.png", use_container_width=True)
                 st.markdown(f"**{_t('ex_butterfly')}**\n{_t('expl_butterfly')}")
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -4842,6 +4856,842 @@ def mother_dashboard():
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(f"**{_t('track_overall')}:** {completion_pct}%")
             st.progress(completion_pct / 100.0)
+        mother_name = st.session_state.get('mother_name', 'Mother')
+
+        # -------------------------------------------------------------
+        # 1. EXERCISE PLAN HEADER & MATERNAL WELLNESS TAGLINE
+        # -------------------------------------------------------------
+        render_html("""
+        <div style="background: linear-gradient(135deg, #faf5ff 0%, #fdf2f8 50%, #eff6ff 100%); border: 1.5px solid #e9d5ff; border-radius: 20px; padding: 24px 28px; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(168, 85, 247, 0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+                <div style="flex: 1; min-width: 280px;">
+                    <div style="display: inline-flex; align-items: center; gap: 6px; background: #f3e8ff; color: #7e22ce; padding: 4px 14px; border-radius: 20px; font-weight: 800; font-size: 0.8rem; border: 1px solid #d8b4fe; margin-bottom: 8px;">
+                        🌸 PRENATAL WELLNESS & MOVEMENT
+                    </div>
+                    <h1 style="margin: 0; color: #581c87; font-size: 2.2rem; font-weight: 800; font-family: 'Outfit', sans-serif; letter-spacing: -0.5px;">
+                        🧘‍♀️ Pregnancy Exercise Plan
+                    </h1>
+                    <p style="margin: 6px 0 0 0; color: #475569; font-size: 1.02rem; line-height: 1.55; font-weight: 500;">
+                        Safe, doctor-approved prenatal workouts and serene movements tailored to your stage of pregnancy to nurture strength, mobility, and maternal vitality.
+                    </p>
+                </div>
+                <div style="background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(8px); border: 1px solid #f3e8ff; padding: 10px 18px; border-radius: 14px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                    <span style="font-size: 1.5rem;">🩺</span>
+                    <div style="font-weight: 800; color: #6b21a8; font-size: 0.82rem; margin-top: 2px;">Doctor & ASHA Approved</div>
+                    <div style="font-size: 0.74rem; color: #64748b;">Low Impact & Safe</div>
+                </div>
+            </div>
+        </div>
+        """)
+
+        # -------------------------------------------------------------
+        # 2. PREGNANCY STAGE / CURRENT WEEK & THIS WEEK'S FOCUS CARDS
+        # -------------------------------------------------------------
+        top_col1, top_col2 = st.columns([1.2, 1.0])
+
+        with top_col1:
+            if "exercise_selected_week" not in st.session_state:
+                st.session_state["exercise_selected_week"] = 24
+                
+            cur_week = st.session_state["exercise_selected_week"]
+            
+            if cur_week <= 12:
+                trimester_num = 1
+                trimester_badge = "🌸 1st Trimester"
+                trimester_desc = "Gentle foundations, deep breathing, and low-intensity movements to soothe nausea and support early development."
+            elif cur_week <= 27:
+                trimester_num = 2
+                trimester_badge = "🌿 2nd Trimester"
+                trimester_desc = "Golden energy period! Focus on pelvic floor conditioning, posture alignment, and hip mobility for comfortable carrying."
+            else:
+                trimester_num = 3
+                trimester_badge = "🌟 3rd Trimester"
+                trimester_desc = "Preparing for birth! Gentle hip opening, pelvic rocking, breathing exercises, and restorative stretches."
+
+            week_progress = min(1.0, max(0.0, cur_week / 40.0))
+            progress_pct = int(week_progress * 100)
+
+            t1_done = "✓" if trimester_num > 1 else ("📍" if trimester_num == 1 else "")
+            t2_done = "✓" if trimester_num > 2 else ("📍" if trimester_num == 2 else "")
+            t3_done = "📍" if trimester_num == 3 else ""
+
+            t1_bg = "#d8b4fe" if trimester_num >= 1 else "#f1f5f9"
+            t1_col = "#581c87" if trimester_num >= 1 else "#94a3b8"
+            t2_bg = "#d8b4fe" if trimester_num >= 2 else "#f1f5f9"
+            t2_col = "#581c87" if trimester_num >= 2 else "#94a3b8"
+            t3_bg = "#d8b4fe" if trimester_num >= 3 else "#f1f5f9"
+            t3_col = "#581c87" if trimester_num >= 3 else "#94a3b8"
+
+            render_html(f"""
+            <div style="background: linear-gradient(135deg, #ffffff 0%, #faf5ff 100%); border: 1.5px solid #e9d5ff; border-radius: 18px; padding: 20px 24px; box-shadow: 0 4px 14px rgba(124, 58, 237, 0.05); height: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <span style="font-size: 0.78rem; font-weight: 800; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.5px;">Current Pregnancy Stage</span>
+                        <h3 style="margin: 2px 0 0 0; color: #1e1b4b; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.35rem;">
+                            Week {cur_week} of 40
+                        </h3>
+                    </div>
+                    <span style="background: #f3e8ff; color: #6b21a8; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.82rem; border: 1px solid #d8b4fe;">
+                        {trimester_badge}
+                    </span>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 12px 0 8px 0;">
+                    <div style="background: {t1_bg}; color: {t1_col}; padding: 6px 8px; border-radius: 8px; text-align: center; font-size: 0.74rem; font-weight: 700;">
+                        1st Trimester {t1_done}
+                    </div>
+                    <div style="background: {t2_bg}; color: {t2_col}; padding: 6px 8px; border-radius: 8px; text-align: center; font-size: 0.74rem; font-weight: 700;">
+                        2nd Trimester {t2_done}
+                    </div>
+                    <div style="background: {t3_bg}; color: {t3_col}; padding: 6px 8px; border-radius: 8px; text-align: center; font-size: 0.74rem; font-weight: 700;">
+                        3rd Trimester {t3_done}
+                    </div>
+                </div>
+                
+                <div style="background: #e2e8f0; border-radius: 10px; height: 10px; overflow: hidden; margin: 10px 0;">
+                    <div style="background: linear-gradient(90deg, #9333ea, #ec4899); width: {progress_pct}%; height: 100%; border-radius: 10px;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #64748b; font-weight: 600;">
+                    <span>Conception (Week 1)</span>
+                    <span>{progress_pct}% Completed</span>
+                    <span>Due Date (Week 40)</span>
+                </div>
+                
+                <p style="margin: 12px 0 0 0; font-size: 0.86rem; color: #475569; line-height: 1.45;">
+                    💡 <b>Stage Guidance:</b> {trimester_desc}
+                </p>
+            </div>
+            """)
+            
+            with st.expander("⚙️ Adjust Pregnancy Week"):
+                new_week = st.slider("Select your current week to customize routine:", 1, 40, cur_week, key="exercise_week_slider")
+                if new_week != cur_week:
+                    st.session_state["exercise_selected_week"] = new_week
+                    st.rerun()
+
+        with top_col2:
+            render_html(f"""
+            <div style="background: linear-gradient(135deg, #fdf4ff 0%, #fff1f2 100%); border: 1.5px solid #fbcfe8; border-radius: 18px; padding: 20px 24px; box-shadow: 0 4px 14px rgba(219, 39, 119, 0.05); height: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <span style="font-size: 1.3rem;">🎯</span>
+                    <h3 style="margin: 0; color: #831843; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.25rem;">
+                        This Week’s Focus
+                    </h3>
+                </div>
+                <p style="color: #475569; font-size: 0.88rem; margin: 0 0 12px 0;">
+                    Targeted goals curated for week {cur_week} to keep you energized, agile, and relaxed:
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div style="background: white; border-radius: 10px; padding: 8px 12px; border: 1px solid #fce7f3; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.1rem;">🌸</span>
+                        <div style="font-size: 0.84rem; color: #1e293b; font-weight: 600;">
+                            <b>Pelvic Floor Tone:</b> Daily gentle Kegels & pelvic tilts
+                        </div>
+                    </div>
+                    <div style="background: white; border-radius: 10px; padding: 8px 12px; border: 1px solid #fce7f3; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.1rem;">🧘‍♀️</span>
+                        <div style="font-size: 0.84rem; color: #1e293b; font-weight: 600;">
+                            <b>Spine & Lumbar Relief:</b> Cat-cow stretch & hip circles
+                        </div>
+                    </div>
+                    <div style="background: white; border-radius: 10px; padding: 8px 12px; border: 1px solid #fce7f3; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.1rem;">⏱️</span>
+                        <div style="font-size: 0.84rem; color: #1e293b; font-weight: 600;">
+                            <b>Weekly Goal:</b> 20–30 mins/day • 5 active days (150 mins)
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """)
+
+        render_html("<div style='margin-top: 24px;'></div>")
+
+        # -------------------------------------------------------------
+        # 3. INTERACTIVE WORKOUT PLAYER (IF ACTIVE)
+        # -------------------------------------------------------------
+        if "active_workout" in st.session_state and st.session_state["active_workout"]:
+            active_ex = st.session_state["active_workout"]
+            
+            render_html(f"""
+            <div style="background: linear-gradient(135deg, #4c1d95 0%, #701a75 100%); color: white; border-radius: 20px; padding: 24px 28px; margin-bottom: 25px; box-shadow: 0 10px 25px rgba(76, 29, 149, 0.25);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <span style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; text-transform: uppercase;">
+                            Active Guided Exercise Session
+                        </span>
+                        <h2 style="margin: 8px 0 0 0; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.75rem; color: #ffffff;">
+                            {active_ex.get('name', 'Exercise')}
+                        </h2>
+                    </div>
+                    <div style="font-size: 0.9rem; background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 12px;">
+                        ⏱️ Target: <b>{active_ex.get('duration', '5 Mins')}</b> • {active_ex.get('intensity', 'Gentle')}
+                    </div>
+                </div>
+            </div>
+            """)
+            
+            p_col1, p_col2 = st.columns([1.2, 1])
+            with p_col1:
+                steps_list = active_ex.get('steps', ['Sit comfortably with back straight', 'Breathe gently and evenly', 'Engage core without straining', 'Relax and repeat 8-10 cycles'])
+                steps_html = "".join([f"<li style='margin-bottom: 6px;'>{s}</li>" for s in steps_list])
+                render_html(f"""
+                <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04);">
+                    <h4 style="color: #0f172a; margin: 0 0 10px 0; font-family: 'Outfit', sans-serif;">📋 Step-by-Step Technique:</h4>
+                    <ol style="color: #334155; font-size: 0.92rem; line-height: 1.6; margin: 0; padding-left: 20px;">
+                        {steps_html}
+                    </ol>
+                    <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 10px 14px; border-radius: 8px; margin-top: 14px; color: #166534; font-size: 0.86rem;">
+                        <b>🌸 Maternal Safety Tip:</b> Keep movements smooth and continuous. Never hold your breath. If you feel any strain or dizziness, pause and rest immediately.
+                    </div>
+                </div>
+                """)
+                
+            with p_col2:
+                timer_html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 0; background: transparent; text-align: center; }}
+                        .timer-card {{ background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border: 1.5px solid #d8b4fe; border-radius: 16px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }}
+                        .timer-display {{ font-size: 2.8rem; font-weight: 800; color: #581c87; font-family: monospace; margin: 8px 0; }}
+                        .btn-timer {{ background: #7c3aed; color: white; border: none; padding: 8px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.88rem; margin: 4px; transition: 0.2s; }}
+                        .btn-timer:hover {{ background: #6d28d9; transform: translateY(-1px); }}
+                        .btn-reset {{ background: #cbd5e1; color: #334155; }}
+                        .btn-reset:hover {{ background: #94a3b8; }}
+                        .pulse-circle {{ width: 60px; height: 60px; border-radius: 50%; background: #c084fc; margin: 10px auto; animation: breathe 4s infinite ease-in-out; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }}
+                        @keyframes breathe {{ 0%, 100% {{ transform: scale(1); opacity: 0.7; }} 50% {{ transform: scale(1.25); opacity: 1; }} }}
+                    </style>
+                </head>
+                <body>
+                    <div class="timer-card">
+                        <div class="pulse-circle">🌸</div>
+                        <div style="font-size: 0.82rem; font-weight: 700; color: #6b21a8; text-transform: uppercase;">Session Stopwatch</div>
+                        <div class="timer-display" id="time-display">00:00</div>
+                        <div>
+                            <button class="btn-timer" id="start-btn" onclick="toggleTimer()">▶️ Start Timer</button>
+                            <button class="btn-timer btn-reset" onclick="resetTimer()">🔄 Reset</button>
+                        </div>
+                    </div>
+                    <script>
+                        let timer = null;
+                        let seconds = 0;
+                        let isRunning = false;
+                        function formatTime(s) {{
+                            let mins = Math.floor(s / 60);
+                            let secs = s % 60;
+                            return (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+                        }}
+                        function updateDisplay() {{
+                            document.getElementById('time-display').innerText = formatTime(seconds);
+                        }}
+                        function toggleTimer() {{
+                            if (isRunning) {{
+                                clearInterval(timer);
+                                document.getElementById('start-btn').innerText = '▶️ Resume';
+                                isRunning = false;
+                            }} else {{
+                                timer = setInterval(() => {{
+                                    seconds++;
+                                    updateDisplay();
+                                }}, 1000);
+                                document.getElementById('start-btn').innerText = '⏸️ Pause';
+                                isRunning = true;
+                            }}
+                        }}
+                        function resetTimer() {{
+                            clearInterval(timer);
+                            isRunning = false;
+                            seconds = 0;
+                            updateDisplay();
+                            document.getElementById('start-btn').innerText = '▶️ Start Timer';
+                        }}
+                    </script>
+                </body>
+                </html>
+                """
+                components.html(timer_html, height=210)
+                
+            p_btn1, p_btn2 = st.columns([1, 1])
+            with p_btn1:
+                if st.button("✅ Complete & Record This Workout", type="primary", use_container_width=True, key="btn_rec_active_workout"):
+                    if mother_id != 'Unknown':
+                        log_exercise(mother_id, active_ex.get('name', 'Exercise'))
+                    st.success(f"🎉 Fantastic work! You have completed '{active_ex.get('name')}'. Keep up the wonderful maternal routine!")
+                    st.session_state["active_workout"] = None
+                    time.sleep(1)
+                    st.rerun()
+            with p_btn2:
+                if st.button("✕ Close Guided Session", use_container_width=True, key="btn_close_active_workout"):
+                    st.session_state["active_workout"] = None
+                    st.rerun()
+
+            st.markdown("---")
+
+        # -------------------------------------------------------------
+        # 4. EXERCISE CATEGORY TABS & RECOMMENDED EXERCISES
+        # -------------------------------------------------------------
+        render_html("""
+        <div style="margin-bottom: 12px;">
+            <h2 style="font-family: 'Outfit', sans-serif; color: #1e1b4b; font-weight: 800; font-size: 1.65rem; margin: 0;">
+                ✨ Recommended Prenatal Exercises
+            </h2>
+            <p style="color: #64748b; font-size: 0.92rem; margin: 3px 0 0 0;">
+                Filter by movement type. Each activity is carefully selected for maternal safety, flexibility, and gentle strength.
+            </p>
+        </div>
+        """)
+
+        cat_tab_all, cat_tab_walk, cat_tab_stretch, cat_tab_breath, cat_tab_pelvic, cat_tab_strength, cat_tab_relax = st.tabs([
+            "🌟 All Exercises",
+            "🚶‍♀️ Walking",
+            "🧘‍♀️ Stretching",
+            "🫁 Breathing",
+            "🌸 Pelvic Floor",
+            "💪 Strength",
+            "🌙 Relaxation"
+        ])
+
+        # Comprehensive Database of Maternal Exercises
+        exercises_dataset = [
+            {
+                "id": "ex_butterfly",
+                "name": "Butterfly Pose (Bhadrasana)",
+                "category": "Stretching",
+                "asset": "assets/ex_butterfly.png",
+                "emoji": "🦋",
+                "benefit": "Opens inner thighs and pelvic groin, improves hip joint flexibility, and gently relieves low-back fatigue.",
+                "duration": "5–8 Mins",
+                "duration_sec": 360,
+                "intensity": "Gentle",
+                "intensity_color": "#16a34a",
+                "intensity_bg": "#dcfce7",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Sit straight on a yoga mat or folded blanket with spine erect.",
+                    "Bend your knees and bring the soles of your feet together in front of you.",
+                    "Clasp your hands around your toes or ankles.",
+                    "Gently flutter your knees up and down like butterfly wings for 20-30 seconds.",
+                    "Take slow deep breaths, pausing to rest between flutter sets."
+                ]
+            },
+            {
+                "id": "ex_pelvic_kegels",
+                "name": "Pelvic Floor Lifts (Kegels)",
+                "category": "Pelvic Floor",
+                "asset": None,
+                "emoji": "🌸",
+                "benefit": "Strengthens muscles supporting the bladder, uterus, and bowels; eases delivery recovery and prevents incontinence.",
+                "duration": "5 Mins",
+                "duration_sec": 300,
+                "intensity": "Gentle",
+                "intensity_color": "#7c3aed",
+                "intensity_bg": "#ede9fe",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Sit comfortably or lie on your left side with knees slightly bent.",
+                    "Identify your pelvic floor muscles (the muscles used to stop the flow of urine).",
+                    "Contract and gently lift these muscles inward and upward.",
+                    "Hold the contraction for 4–5 seconds while breathing smoothly (do not hold breath).",
+                    "Release completely for 5 seconds. Repeat for 10-12 controlled repetitions."
+                ]
+            },
+            {
+                "id": "ex_walking",
+                "name": "Brisk Prenatal Nature Walk",
+                "category": "Walking",
+                "asset": None,
+                "emoji": "🚶‍♀️",
+                "benefit": "Maintains cardiovascular fitness, enhances stamina, regulates blood sugar levels, and uplifts mood naturally.",
+                "duration": "15–20 Mins",
+                "duration_sec": 1000,
+                "intensity": "Light",
+                "intensity_color": "#0284c7",
+                "intensity_bg": "#e0f2fe",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Wear well-cushioned walking shoes and comfortable cotton clothing.",
+                    "Start with a 3-minute slow warm-up stroll to awaken muscles.",
+                    "Maintain an upright posture with shoulders relaxed and arms swinging naturally.",
+                    "Keep a conversational pace (you should be able to speak full sentences without gasping).",
+                    "Finish with 2 minutes of gentle cooling-down stroll and sip water."
+                ]
+            },
+            {
+                "id": "ex_cat_cow",
+                "name": "Cat-Cow Spine Release (Marjaryasana)",
+                "category": "Stretching",
+                "asset": None,
+                "emoji": "🐈",
+                "benefit": "Stretches and mobilizes the spine, eases lower-back tension, and encourages baby into an optimal anterior position.",
+                "duration": "6–10 Mins",
+                "duration_sec": 480,
+                "intensity": "Gentle",
+                "intensity_color": "#16a34a",
+                "intensity_bg": "#dcfce7",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Come onto all fours on a padded mat with wrists under shoulders and knees under hips.",
+                    "Inhale gently: let belly soften slightly toward floor, lift chest and gaze forward (Cow Pose).",
+                    "Exhale smoothly: round your spine toward the ceiling, tuck chin toward chest (Cat Pose).",
+                    "Flow smoothly between both poses for 8 to 10 rhythmic breath cycles."
+                ]
+            },
+            {
+                "id": "ex_diaphragm_breath",
+                "name": "Deep Belly Breathing (Pranayama)",
+                "category": "Breathing",
+                "asset": None,
+                "emoji": "🫁",
+                "benefit": "Maximizes oxygen delivery to baby, lowers maternal blood pressure, and calms labor anxiety.",
+                "duration": "5–8 Mins",
+                "duration_sec": 360,
+                "intensity": "Gentle",
+                "intensity_color": "#059669",
+                "intensity_bg": "#d1fae5",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Sit comfortably in a chair or crossed-legged with a cushion supporting your hips.",
+                    "Place one hand on your heart and one hand on your pregnant belly.",
+                    "Inhale slowly through your nose for 4 counts, feeling your belly gently expand.",
+                    "Exhale softly through your mouth for 6 counts, releasing all body tension.",
+                    "Continue for 10-15 peaceful cycles."
+                ]
+            },
+            {
+                "id": "ex_squats",
+                "name": "Supported Prenatal Squats (Malasana)",
+                "category": "Strength",
+                "asset": "assets/ex_squats.png",
+                "emoji": "🧘‍♀️",
+                "benefit": "Strengthens quadriceps, glutes, and pelvic floor; widens pelvic outlet for smoother labor.",
+                "duration": "5–8 Mins",
+                "duration_sec": 400,
+                "intensity": "Moderate",
+                "intensity_color": "#d97706",
+                "intensity_bg": "#fef3c7",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Stand facing a sturdy chair or wall with feet shoulder-width apart, toes pointed slightly outward.",
+                    "Hold the chair back for balance and support.",
+                    "Bend your knees and lower into a gentle squat, keeping back straight and heels on the floor.",
+                    "Pause at a comfortable depth for 2–3 seconds.",
+                    "Press through your heels to stand back up smoothly. Repeat for 8–10 reps."
+                ]
+            },
+            {
+                "id": "ex_hip_rotation",
+                "name": "Prenatal Hip Rotations & Circles",
+                "category": "Stretching",
+                "asset": "assets/ex_hip_rotation.png",
+                "emoji": "🔄",
+                "benefit": "Improves circulation in pelvic basin, relieves sciatic nerve pressure, and loosens tight lower back.",
+                "duration": "5 Mins",
+                "duration_sec": 300,
+                "intensity": "Gentle",
+                "intensity_color": "#16a34a",
+                "intensity_bg": "#dcfce7",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Stand upright with feet wider than hips and hands placed comfortably on hips.",
+                    "Slowly rotate your hips in wide, smooth clockwise circles for 8 rotations.",
+                    "Reverse direction and make 8 counter-clockwise circles.",
+                    "Keep knees soft and breath continuous throughout."
+                ]
+            },
+            {
+                "id": "ex_side_lunges",
+                "name": "Gentle Side Lunges",
+                "category": "Strength",
+                "asset": "assets/ex_side_lunges.png",
+                "emoji": "🦵",
+                "benefit": "Strengthens leg adductors, stabilizes the pelvis, and prevents gestational hip imbalances.",
+                "duration": "6–8 Mins",
+                "duration_sec": 420,
+                "intensity": "Moderate",
+                "intensity_color": "#d97706",
+                "intensity_bg": "#fef3c7",
+                "trimester": "Trimesters 1, 2",
+                "steps": [
+                    "Stand with feet wide apart and hands resting on thighs or holding a chair.",
+                    "Shift weight to the right leg and bend right knee into a gentle side lunge.",
+                    "Ensure right knee does not go past your toes; keep left leg straight.",
+                    "Hold for 2 seconds, return to center, and repeat on the left side. Do 6-8 reps per side."
+                ]
+            },
+            {
+                "id": "ex_side_rest",
+                "name": "Side-Lying Rest & Guided Relaxation",
+                "category": "Relaxation",
+                "asset": None,
+                "emoji": "🌙",
+                "benefit": "Optimizes maternal-fetal circulation via the vena cava, reduces ankle swelling, and promotes tranquil sleep.",
+                "duration": "10–15 Mins",
+                "duration_sec": 600,
+                "intensity": "Gentle",
+                "intensity_color": "#7c3aed",
+                "intensity_bg": "#ede9fe",
+                "trimester": "Trimesters 1, 2, 3",
+                "steps": [
+                    "Lie on your left side on a comfortable bed or yoga mat.",
+                    "Place a soft pillow between your knees and another supporting your belly and head.",
+                    "Close your eyes, relax your jaw, shoulders, and hips completely.",
+                    "Focus your mind on the gentle rhythmic heartbeat and love for your growing baby."
+                ]
+            }
+        ]
+
+        def render_exercise_grid(category_filter=None):
+            filtered_exercises = exercises_dataset if not category_filter else [e for e in exercises_dataset if e['category'] == category_filter]
+            
+            cols = st.columns(3)
+            for idx, ex in enumerate(filtered_exercises):
+                with cols[idx % 3]:
+                    if ex.get('asset') and os.path.exists(ex['asset']):
+                        b64 = load_image_base64(ex['asset'])
+                        img_html = f'<img src="data:image/png;base64,{b64}" style="width: 100%; height: 140px; object-fit: cover; border-radius: 12px; margin-bottom: 12px;">'
+                    else:
+                        img_html = f'<div style="width: 100%; height: 120px; background: linear-gradient(135deg, #fdf4ff 0%, #ede9fe 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 3.2rem; margin-bottom: 12px;">{ex["emoji"]}</div>'
+
+                    render_html(f"""
+                    <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 16px; box-shadow: 0 4px 14px rgba(0,0,0,0.03); margin-bottom: 16px; display: flex; flex-direction: column; justify-content: space-between; height: calc(100% - 16px);">
+                        <div>
+                            {img_html}
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                <span style="background: #f1f5f9; color: #475569; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem;">
+                                    {ex['category']}
+                                </span>
+                                <span style="background: {ex['intensity_bg']}; color: {ex['intensity_color']}; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem;">
+                                    ● {ex['intensity']}
+                                </span>
+                            </div>
+                            <h4 style="margin: 4px 0 6px 0; color: #0f172a; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.05rem;">
+                                {ex['name']}
+                            </h4>
+                            <p style="color: #64748b; font-size: 0.83rem; line-height: 1.45; margin: 0 0 10px 0; min-height: 48px;">
+                                {ex['benefit']}
+                            </p>
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem; color: #64748b; font-weight: 600; padding: 6px 0; border-top: 1px dashed #e2e8f0; margin-bottom: 10px;">
+                                <span>⏱️ {ex['duration']}</span>
+                                <span>🌸 {ex['trimester']}</span>
+                            </div>
+                        </div>
+                    </div>
+                    """)
+                    
+                    btn_c1, btn_c2 = st.columns([1, 1])
+                    with btn_c1:
+                        if st.button("▶️ Start", key=f"btn_start_{ex['id']}_{category_filter or 'all'}", use_container_width=True, type="primary"):
+                            st.session_state["active_workout"] = ex
+                            st.rerun()
+                    with btn_c2:
+                        if st.button("✅ Done", key=f"btn_done_{ex['id']}_{category_filter or 'all'}", use_container_width=True):
+                            if mother_id != 'Unknown':
+                                log_exercise(mother_id, ex['name'])
+                            st.success(f"Logged {ex['name']}!")
+                            time.sleep(0.8)
+                            st.rerun()
+
+        with cat_tab_all:
+            render_exercise_grid(None)
+        with cat_tab_walk:
+            render_exercise_grid("Walking")
+        with cat_tab_stretch:
+            render_exercise_grid("Stretching")
+        with cat_tab_breath:
+            render_exercise_grid("Breathing")
+        with cat_tab_pelvic:
+            render_exercise_grid("Pelvic Floor")
+        with cat_tab_strength:
+            render_exercise_grid("Strength")
+        with cat_tab_relax:
+            render_exercise_grid("Relaxation")
+
+        render_html("<div style='margin-top: 28px;'></div>")
+
+        # -------------------------------------------------------------
+        # 5. WEEKLY EXERCISE PLAN (MONDAY - SUNDAY SCHEDULE)
+        # -------------------------------------------------------------
+        render_html("""
+        <div style="margin-bottom: 14px;">
+            <div style="display: inline-flex; align-items: center; gap: 6px; background: #ede9fe; color: #6d28d9; padding: 4px 12px; border-radius: 20px; font-weight: 800; font-size: 0.78rem; border: 1px solid #c4b5fd; margin-bottom: 4px;">
+                📅 7-DAY MATERNAL ROUTINE
+            </div>
+            <h2 style="font-family: 'Outfit', sans-serif; color: #1e1b4b; font-weight: 800; font-size: 1.65rem; margin: 0;">
+                Weekly Exercise Schedule
+            </h2>
+            <p style="color: #64748b; font-size: 0.92rem; margin: 3px 0 0 0;">
+                Balanced daily movement blocks designed to avoid fatigue while keeping your pelvic floor, spine, and breath resilient.
+            </p>
+        </div>
+        """)
+
+        weekly_plan = [
+            {"day": "Monday", "icon": "🚶‍♀️", "focus": "Walk & Butterfly Stretch", "duration": "20 Mins", "exercises": "Nature walk (15m) + Butterfly stretch (5m)", "target": "Hip flexibility & oxygenation"},
+            {"day": "Tuesday", "icon": "🌸", "focus": "Kegel Lifts & Breathing", "duration": "15 Mins", "exercises": "Pelvic floor lifts (8m) + Belly breathing (7m)", "target": "Core support & calm nerves"},
+            {"day": "Wednesday", "icon": "🧘‍♀️", "focus": "Cat-Cow & Hip Circles", "duration": "18 Mins", "exercises": "Cat-cow release (10m) + Hip rotations (8m)", "target": "Spine decompression & pelvic tone"},
+            {"day": "Thursday", "icon": "💪", "focus": "Supported Squats & Tone", "duration": "15 Mins", "exercises": "Wall squats (8m) + Gentle arm sweeps (7m)", "target": "Leg stamina for labor"},
+            {"day": "Friday", "icon": "🌸", "focus": "Pelvic Rocking & Lunges", "duration": "18 Mins", "exercises": "Pelvic tilt rocking (10m) + Side lunges (8m)", "target": "Pelvic alignment & balance"},
+            {"day": "Saturday", "icon": "🚶‍♀️", "focus": "Morning Stroll & Stretch", "duration": "25 Mins", "exercises": "Brisk morning walk (20m) + Calm stretch (5m)", "target": "Cardiovascular stamina"},
+            {"day": "Sunday", "icon": "🌙", "focus": "Rest & Serene Meditation", "duration": "15 Mins", "exercises": "Side-lying deep rest (10m) + Pranayama (5m)", "target": "Restoration & baby bonding"}
+        ]
+
+        completed_days_count = 0
+        logged_activities_this_week = []
+        if mother_id != 'Unknown':
+            recent_logs = get_mother_exercise_logs(mother_id)
+            now_dt = datetime.datetime.now()
+            for log in recent_logs:
+                try:
+                    log_t = datetime.datetime.strptime(log[1], "%Y-%m-%d %H:%M:%S")
+                    if (now_dt - log_t).days <= 7:
+                        logged_activities_this_week.append(log[0])
+                except:
+                    pass
+            completed_days_count = min(7, len(logged_activities_this_week))
+
+        today_name = datetime.datetime.now().strftime("%A")
+
+        week_cols = st.columns(7)
+        for idx, day_info in enumerate(weekly_plan):
+            is_today = (day_info["day"] == today_name)
+            is_done = idx < completed_days_count
+            
+            bg_color = "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)" if is_today else "#ffffff"
+            border_color = "#3b82f6" if is_today else "#e2e8f0"
+            today_label = "🌟 TODAY" if is_today else ""
+            status_text = "✓ Done" if is_done else "Scheduled"
+            status_bg = "#dcfce7" if is_done else "#f1f5f9"
+            status_col = "#166534" if is_done else "#64748b"
+            title_col = "#1d4ed8" if is_today else "#64748b"
+            border_w = "2px" if is_today else "1.5px"
+            
+            with week_cols[idx]:
+                render_html(f"""
+                <div style="background: {bg_color}; border: {border_w} solid {border_color}; border-radius: 14px; padding: 14px 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.03); min-height: 190px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 0.74rem; font-weight: 800; color: {title_col}; text-transform: uppercase;">
+                            {day_info['day'][:3]} {today_label}
+                        </div>
+                        <div style="font-size: 1.6rem; margin: 6px 0 4px 0;">{day_info['icon']}</div>
+                        <div style="font-weight: 700; color: #0f172a; font-size: 0.82rem; line-height: 1.3;">
+                            {day_info['focus']}
+                        </div>
+                        <div style="font-size: 0.72rem; color: #64748b; margin-top: 4px;">
+                            ⏱️ {day_info['duration']}
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <span style="background: {status_bg}; color: {status_col}; padding: 3px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; display: inline-block;">
+                            {status_text}
+                        </span>
+                    </div>
+                </div>
+                """)
+
+        render_html("<div style='margin-top: 10px;'></div>")
+        w_btn1, w_btn2 = st.columns([1.5, 1])
+        with w_btn1:
+            if st.button(f"✅ Mark Today's ({today_name}) Routine as Completed", type="primary", use_container_width=True, key="btn_complete_today_routine"):
+                if mother_id != 'Unknown':
+                    log_exercise(mother_id, f"{today_name} Routine Completed")
+                st.success(f"🎉 Awesome! Today's {today_name} prenatal workout has been recorded in your health log!")
+                time.sleep(0.8)
+                st.rerun()
+
+        render_html("<div style='margin-top: 28px;'></div>")
+
+        # -------------------------------------------------------------
+        # 6. EXERCISE COMPLETION & PROGRESS TRACKER
+        # -------------------------------------------------------------
+        render_html("""
+        <div style="margin-bottom: 12px;">
+            <h2 style="font-family: 'Outfit', sans-serif; color: #1e1b4b; font-weight: 800; font-size: 1.65rem; margin: 0;">
+                📊 Weekly Maternal Activity & Progress Tracker
+            </h2>
+            <p style="color: #64748b; font-size: 0.92rem; margin: 3px 0 0 0;">
+                Real-time tracking of your active movement days, streak milestones, and session logs.
+            </p>
+        </div>
+        """)
+
+        prog_pct = int((completed_days_count / 7.0) * 100) if completed_days_count > 0 else 15
+        est_mins = completed_days_count * 20 if completed_days_count > 0 else 20
+        wellness_tier = "🌸 Radiant" if prog_pct >= 60 else "🌱 Growing"
+        streak_count = completed_days_count or 1
+
+        render_html(f"""
+        <div style="background: linear-gradient(135deg, #ffffff 0%, #faf5ff 100%); border: 1.5px solid #e9d5ff; border-radius: 18px; padding: 22px 24px; box-shadow: 0 4px 16px rgba(124, 58, 237, 0.05); margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 16px;">
+                <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 14px; padding: 14px; text-align: center;">
+                    <span style="font-size: 1.6rem;">🎯</span>
+                    <div style="font-size: 1.6rem; font-weight: 800; color: #6d28d9; margin-top: 2px;">{completed_days_count} / 7</div>
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">Days Completed</div>
+                </div>
+                <div style="background: #fdf2f8; border: 1px solid #fbcfe8; border-radius: 14px; padding: 14px; text-align: center;">
+                    <span style="font-size: 1.6rem;">🔥</span>
+                    <div style="font-size: 1.6rem; font-weight: 800; color: #be185d; margin-top: 2px;">{streak_count} Day Streak</div>
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">Active Momentum</div>
+                </div>
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 14px; padding: 14px; text-align: center;">
+                    <span style="font-size: 1.6rem;">⏱️</span>
+                    <div style="font-size: 1.6rem; font-weight: 800; color: #15803d; margin-top: 2px;">{est_mins} Mins</div>
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">Active Movement</div>
+                </div>
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 14px; padding: 14px; text-align: center;">
+                    <span style="font-size: 1.6rem;">🏆</span>
+                    <div style="font-size: 1.35rem; font-weight: 800; color: #0369a1; margin-top: 4px;">{wellness_tier}</div>
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">Wellness Tier</div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 8px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.84rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
+                    <span>Weekly Target Completion</span>
+                    <span>{prog_pct}% Goal Achieved</span>
+                </div>
+                <div style="background: #e2e8f0; border-radius: 10px; height: 12px; overflow: hidden;">
+                    <div style="background: linear-gradient(90deg, #7c3aed, #ec4899); width: {prog_pct}%; height: 100%; border-radius: 10px;"></div>
+                </div>
+            </div>
+        </div>
+        """)
+
+        # -------------------------------------------------------------
+        # 7. EXERCISE REMINDER SETTINGS & PREFERENCES
+        # -------------------------------------------------------------
+        render_html("""
+        <div style="margin-bottom: 12px;">
+            <h3 style="font-family: 'Outfit', sans-serif; color: #1e1b4b; font-weight: 800; font-size: 1.45rem; margin: 0;">
+                🔔 Exercise Reminder Settings
+            </h3>
+            <p style="color: #64748b; font-size: 0.88rem; margin: 2px 0 0 0;">
+                Configure daily gentle notifications to help you maintain a comfortable prenatal exercise rhythm.
+            </p>
+        </div>
+        """)
+
+        rem_col1, rem_col2 = st.columns([1.2, 1])
+        with rem_col1:
+            with st.container():
+                rem_time = st.selectbox(
+                    "⏰ Preferred Workout Time:",
+                    ["Morning: 07:00 AM – 07:30 AM (Refreshing Walk & Stretches)",
+                     "Afternoon: 04:30 PM – 05:00 PM (Pelvic Floor & Breathing)",
+                     "Evening: 06:30 PM – 07:00 PM (Gentle Mobility & Relaxation)"],
+                    index=0,
+                    key="rem_ex_time_select"
+                )
+                
+                c_r1, c_r2 = st.columns(2)
+                with c_r1:
+                    rem_push = st.checkbox("📱 Daily App Notification", value=True, key="rem_chk_app")
+                with c_r2:
+                    rem_hydro = st.checkbox("💧 Hydration 15m Pre-Alert", value=True, key="rem_chk_hydro")
+                    
+                if st.button("💾 Save Reminder Preferences", type="secondary", use_container_width=True, key="btn_save_ex_rem"):
+                    st.success("✅ Reminder preferences updated! You will receive gentle audio-visual alerts at your chosen time.")
+
+        with rem_col2:
+            render_html("""
+            <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 16px; padding: 18px 22px; height: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span style="font-size: 1.3rem;">💡</span>
+                    <div style="font-weight: 800; color: #1e40af; font-size: 0.95rem;">Why Routine Matters</div>
+                </div>
+                <p style="color: #334155; font-size: 0.85rem; line-height: 1.5; margin: 0;">
+                    Exercising at the same time each day builds a natural habit, balances maternal sleep cycles, and signals your body to release endorphins that soothe both mother and baby.
+                </p>
+            </div>
+            """)
+
+        render_html("<div style='margin-top: 28px;'></div>")
+
+        # -------------------------------------------------------------
+        # 8. SAFETY TIPS & PRECAUTIONS SECTION
+        # -------------------------------------------------------------
+        render_html("""
+        <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1.5px solid #a7f3d0; border-radius: 18px; padding: 22px 26px; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.05); margin-bottom: 24px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 1.6rem;">🛡️</span>
+                <h3 style="margin: 0; color: #065f46; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.35rem;">
+                    Maternal Safety & Best Practices
+                </h3>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;">
+                <div style="background: white; border: 1px solid #d1fae5; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-weight: 700; color: #047857; font-size: 0.88rem; margin-bottom: 4px;">💧 Stay Well Hydrated</div>
+                    <div style="font-size: 0.82rem; color: #475569; line-height: 1.4;">Drink a glass of water 20 minutes before exercise and take small sips during movement.</div>
+                </div>
+                <div style="background: white; border: 1px solid #d1fae5; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-weight: 700; color: #047857; font-size: 0.88rem; margin-bottom: 4px;">🌬️ Talk-Test Principle</div>
+                    <div style="font-size: 0.82rem; color: #475569; line-height: 1.4;">Maintain a pace where you can comfortably speak full sentences without being breathless.</div>
+                </div>
+                <div style="background: white; border: 1px solid #d1fae5; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-weight: 700; color: #047857; font-size: 0.88rem; margin-bottom: 4px;">🚫 Avoid Flat-Back Postures</div>
+                    <div style="font-size: 0.82rem; color: #475569; line-height: 1.4;">After week 16, avoid lying flat on your back to prevent compression of the vena cava vein.</div>
+                </div>
+                <div style="background: white; border: 1px solid #d1fae5; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-weight: 700; color: #047857; font-size: 0.88rem; margin-bottom: 4px;">👟 Supportive Footwear</div>
+                    <div style="font-size: 0.82rem; color: #475569; line-height: 1.4;">Wear non-slip supportive shoes and perform stretches on a non-slip yoga mat.</div>
+                </div>
+            </div>
+        </div>
+        """)
+
+        # -------------------------------------------------------------
+        # 9. CLEAR RED WARNING: WHEN TO STOP EXERCISING & SEEK HELP
+        # -------------------------------------------------------------
+        render_html("""
+        <div style="background: linear-gradient(135deg, #fff1f2 0%, #fee2e2 100%); border: 2px solid #f87171; border-left: 8px solid #dc2626; border-radius: 18px; padding: 22px 26px; box-shadow: 0 6px 20px rgba(220, 38, 38, 0.08); margin-bottom: 24px;">
+            <div style="display: flex; align-items: flex-start; gap: 14px;">
+                <span style="font-size: 2.2rem; line-height: 1;">⚠️</span>
+                <div style="flex: 1;">
+                    <h3 style="margin: 0 0 6px 0; color: #991b1b; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.35rem;">
+                        Red Flag Symptoms: When to Stop Exercising Immediately
+                    </h3>
+                    <p style="margin: 0 0 12px 0; color: #7f1d1d; font-size: 0.92rem; line-height: 1.5; font-weight: 600;">
+                        If you experience any of the following warning signs, stop all activity, sit or lie on your left side, and immediately contact your doctor, ASHA worker, or emergency services:
+                    </p>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                        <div style="background: rgba(255,255,255,0.85); border-radius: 10px; padding: 8px 12px; border: 1px solid #fca5a5; font-size: 0.86rem; color: #991b1b; font-weight: 600;">
+                            🩸 Any vaginal bleeding or fluid leakage
+                        </div>
+                        <div style="background: rgba(255,255,255,0.85); border-radius: 10px; padding: 8px 12px; border: 1px solid #fca5a5; font-size: 0.86rem; color: #991b1b; font-weight: 600;">
+                            💫 Dizziness, faintness, or blurred vision
+                        </div>
+                        <div style="background: rgba(255,255,255,0.85); border-radius: 10px; padding: 8px 12px; border: 1px solid #fca5a5; font-size: 0.86rem; color: #991b1b; font-weight: 600;">
+                            💔 Chest pain or severe shortness of breath
+                        </div>
+                        <div style="background: rgba(255,255,255,0.85); border-radius: 10px; padding: 8px 12px; border: 1px solid #fca5a5; font-size: 0.86rem; color: #991b1b; font-weight: 600;">
+                            ⚡ Regular, painful uterine contractions
+                        </div>
+                        <div style="background: rgba(255,255,255,0.85); border-radius: 10px; padding: 8px 12px; border: 1px solid #fca5a5; font-size: 0.86rem; color: #991b1b; font-weight: 600;">
+                            🦵 Calf swelling, redness, or severe muscle ache
+                        </div>
+                        <div style="background: rgba(255,255,255,0.85); border-radius: 10px; border: 1px solid #fca5a5; padding: 8px 12px; font-size: 0.86rem; color: #991b1b; font-weight: 600;">
+                            👶 Sudden decrease in baby's kicks/movement
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """)
+        
+        # Immediate Emergency Help Access Buttons
+        em_col1, em_col2, em_col3 = st.columns(3)
+        with em_col1:
+            st.markdown('<a href="tel:108" style="display:block; text-align:center; background:#dc2626; color:white; padding:12px 14px; border-radius:12px; text-decoration:none; font-weight:bold; font-size:0.92rem; box-shadow:0 3px 10px rgba(220,38,38,0.25);">🚑 Call 108 Ambulance</a>', unsafe_allow_html=True)
+        with em_col2:
+            st.markdown('<a href="tel:102" style="display:block; text-align:center; background:#7c3aed; color:white; padding:12px 14px; border-radius:12px; text-decoration:none; font-weight:bold; font-size:0.92rem; box-shadow:0 3px 10px rgba(124,58,237,0.25);">👶 Call 102 Janani Express</a>', unsafe_allow_html=True)
+        with em_col3:
+            asha_phone = os.environ.get("ASHA_WORKER_PHONE", "7075287040")
+            st.markdown(f'<a href="tel:{asha_phone}" style="display:block; text-align:center; background:#0284c7; color:white; padding:12px 14px; border-radius:12px; text-decoration:none; font-weight:bold; font-size:0.92rem; box-shadow:0 3px 10px rgba(2,132,199,0.25);">📞 Call ASHA ({asha_phone})</a>', unsafe_allow_html=True)
+
+
+
+
 
     elif page == "Emergency Help":
         st.markdown("""
@@ -6990,7 +7840,6 @@ def supervisor_dashboard():
         except Exception as e:
             st.error(f"Error loading cases directory: {e}")
 
-<<<<<<< HEAD
 def get_community_hospitals_catalog():
     """Shared catalog of accredited health centres, CHCs, and Apex hospitals situated around patient."""
     return [
@@ -7653,7 +8502,6 @@ def community_care_dashboard():
     }
     v_lat, v_lon = village_coords.get(village, (17.3850, 78.4867))
     
-=======
 def community_care_dashboard():
     """Render the Community Care & Village Health Support Portal."""
     import database_village_health as dvh
@@ -7661,7 +8509,6 @@ def community_care_dashboard():
     village = st.session_state.get('community_village', 'Rampur')
     member = st.session_state.get('community_member', 'Community Member')
     
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
     with st.sidebar:
         # Top back navigation buttons
         c_nav_c1, c_nav_c2 = st.columns([1.5, 1])
@@ -7685,13 +8532,10 @@ def community_care_dashboard():
         
         c_nav = {
             "Community Health Hub": ("Health Hub & Contacts", "🏥"),
-<<<<<<< HEAD
             "Talk to a Doctor": ("Talk to a Doctor", "📞"),
             "Community Voice Assistant": ("Voice Health Assistant", "🎤"),
             "Community Health Screening": ("Health Check", "🩺"),
             "My Health & Follow-up": ("My Health & Follow-up", "🔄"),
-=======
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
             "Immunization Camps": ("Village Health Camps", "💉"),
             "Nutrition Schemes": ("Maternal Nutrition Schemes", "🥗"),
             "Ambulance & Emergency": ("108 Emergency Transport", "🚑"),
@@ -7702,7 +8546,6 @@ def community_care_dashboard():
         for k, (lbl, icon) in c_nav.items():
             if st.button(f"{icon} {lbl}", use_container_width=True, type="primary" if cur_page == k else "secondary", key=f"comm_btn_{k}"):
                 st.session_state['community_page'] = k
-<<<<<<< HEAD
                 st.rerun()
                 
         # Prominent quick card in sidebar for Talk to a Doctor
@@ -7767,9 +8610,6 @@ def community_care_dashboard():
             st.session_state['community_page'] = "My Health & Follow-up"
             st.rerun()
 
-=======
-                
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
         st.divider()
         cur_lang = st.session_state.get('language', 'English')
         st.selectbox("🌐 " + _t("lang_toggle"), SUPPORTED_LANGUAGES, index=SUPPORTED_LANGUAGES.index(cur_lang) if cur_lang in SUPPORTED_LANGUAGES else 0, key="comm_lang_toggle", on_change=lambda: st.session_state.update({"language": st.session_state.comm_lang_toggle}))
@@ -7796,17 +8636,17 @@ def community_care_dashboard():
                     👨‍👩‍👧 COMMUNITY CARE NETWORK
                 </span>
                 <h1 style="margin: 6px 0 2px 0; font-size: 1.9rem; color: #064e3b; font-family: 'Outfit', sans-serif; font-weight: 800;">
-<<<<<<< HEAD
+
                     {village} Community Health & Support
                 </h1>
                 <p style="margin: 0; color: #047857; font-size: 0.92rem; font-weight: 500;">
                     Free government healthcare benefits, doctor consultation, voice health assistance, health screening, and emergency transport.
-=======
+
                     {village} Maternal & Child Community Care
                 </h1>
                 <p style="margin: 0; color: #047857; font-size: 0.92rem; font-weight: 500;">
                     Free government maternal benefits, immunization camps, Anganwadi food distribution, and emergency transport.
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
+
                 </p>
             </div>
             <div>
@@ -7819,7 +8659,6 @@ def community_care_dashboard():
     """, unsafe_allow_html=True)
     
     if page == "Community Health Hub":
-<<<<<<< HEAD
         # 1. Prominent Action Cards at the very top of the Hub
         st.markdown("""
         <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #86efac; border-radius: 16px; padding: 18px 22px; margin-bottom: 16px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);">
@@ -9049,49 +9888,50 @@ def community_care_dashboard():
                     <div>
                         <span style="font-size: 1.1rem; font-weight: 800;">{badge}</span>
                     </div>
-=======
-        col1, col2 = st.columns([1.5, 1])
-        with col1:
-            st.markdown("### 🏥 Village Health Contacts & Support")
-            st.markdown(f"""
-            <div style="background: #ffffff; border: 1.5px solid #86efac; border-radius: 16px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
-                <h4 style="color: #065f46; margin: 0 0 10px 0;">Primary Village Healthcare Workers</h4>
-                <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f0fdf4; padding-bottom: 8px;">
-                        <span>👩‍⚕️ <b>ASHA Worker ({village}):</b> Sunita Devi</span>
-                        <span style="color: #0284c7; font-weight: 700;">📞 98765-43210</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f0fdf4; padding-bottom: 8px;">
-                        <span>🥗 <b>Anganwadi Worker (AWW):</b> Rekha Sharma</span>
-                        <span style="color: #0284c7; font-weight: 700;">📞 98765-43211</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f0fdf4; padding-bottom: 8px;">
-                        <span>🩺 <b>Auxiliary Nurse Midwife (ANM):</b> Meena Kumari</span>
-                        <span style="color: #0284c7; font-weight: 700;">📞 98765-43212</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>🚑 <b>Emergency Ambulance Coordinator:</b> 24/7 Dispatch</span>
-                        <span style="color: #dc2626; font-weight: 800;">📞 108 / 102</span>
-                    </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
-        with col2:
-            st.markdown("### 🚨 Rapid Emergency Call")
-            st.markdown("""
-            <div style="background: #fff1f2; border: 2px solid #f43f5e; border-radius: 16px; padding: 20px; text-align: center;">
-                <div style="font-size: 2.2rem; margin-bottom: 6px;">🚑</div>
-                <h3 style="color: #9f1239; margin: 0 0 6px 0;">Dial 108 Ambulance</h3>
-                <p style="color: #881337; font-size: 0.88rem; margin: 0 0 14px 0;">Free emergency ambulance transport for labor, bleeding, or urgent pregnancy complications.</p>
-                <div style="background: #ffffff; color: #e11d48; font-weight: 800; padding: 8px 16px; border-radius: 10px; font-size: 1.2rem; border: 1.5px solid #fda4af;">
-                    TOLL FREE: 108 / 102
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
+
+            col1, col2 = st.columns([1.5, 1])
+            with col1:
+                st.markdown("### 🏥 Village Health Contacts & Support")
+                st.markdown(f"""
+                <div style="background: #ffffff; border: 1.5px solid #b6efac; border-radius: 16px; padding: 15px;">
+                    <h4 style="color: #065f46; margin: 0 0 10px 0;">🏥 Primary Village Healthcare Workers</h4>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+                            <span>👩 <b>ASHA Worker ({village}):</b> Sunita Devi</span>
+                            <span style="color: #0284c7; font-weight: 700;">98765-43210</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+                            <span>👩‍⚕️ <b>Anganwadi Worker (AWW):</b> Rekha Sharma</span>
+                            <span style="color: #0284c7; font-weight: 700;">98765-43211</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+                            <span>🩺 <b>Auxiliary Nurse Midwife (ANM):</b> Meena Kumari</span>
+                            <span style="color: #0284c7; font-weight: 700;">98765-43212</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>📞 <b>Emergency Ambulance Coordinator:</b> 24/7 Dispatch</span>
+                            <span style="color: #dc2626; font-weight: 800;">108 / 102</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+
+            with col2:
+                st.markdown("### &nbsp; 🚑 Rapid Emergency Call")
+                st.markdown("""
+                <div style="background: #fff1f2; border: 2px solid #f43f5e; border-radius: 16px; padding: 15px;">
+                    <div style="font-size: 2.2rem; margin-bottom: 6px;">🚨</div>
+                    <h3 style="color: #9f1239; margin: 0 0 6px 0;">Dial 108 Ambulance</h3>
+                    <p style="color: #881337; font-size: 0.88rem; margin: 0 0 14px 0;">Free emergency medical service.</p>
+                    <div style="background: #ffffff; color: #e11d48; font-weight: 800; padding: 8px; text-align: center; border-radius: 8px;">
+                        TOLL FREE: 108 / 102
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
             
-<<<<<<< HEAD
             # Action Buttons: Talk to Doctor, My Health & Follow-up, Get Directions, Emergency
             st.markdown("##### Quick Actions (వెంటనే తీసుకోదగిన చర్యలు):")
             act_col1, act_col2, act_col3, act_col4 = st.columns(4)
@@ -9569,8 +10409,6 @@ def community_care_dashboard():
                         })
                     st.dataframe(pd.DataFrame(consult_data), use_container_width=True, hide_index=True)
 
-=======
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
     elif page == "Immunization Camps":
         st.markdown("### 💉 Upcoming Village Immunization Camps")
         st.markdown("Village Health Sanitation & Nutrition Day (VHSND) camps held every month.")
@@ -9584,7 +10422,6 @@ def community_care_dashboard():
             st.info("Vaccination camps active every Wednesday at the local Anganwadi center.")
             
     elif page == "Nutrition Schemes":
-<<<<<<< HEAD
         st.markdown("### 🥗 Maternal & Child Nutrition Schemes")
         st.markdown("Government nutrition benefits available for families in this village.")
         schemes = [
@@ -9636,60 +10473,6 @@ def community_care_dashboard():
             - **High Blood Sugar (Diabetes):** Eat whole grains, vegetables, and pulses. Avoid refined sugar and sweets. Check fasting and post-meal sugar every month.
             - **Severe Weakness & Anemia:** Consume green leafy vegetables, jaggery, beetroot, and take iron supplements with vitamin C (lemon water).
             """)
-
-
-=======
-        st.markdown("### 🥗 Government Maternal & Child Nutrition Schemes")
-        st.markdown("""
-        <div style="display: flex; flex-direction: column; gap: 14px;">
-            <div style="background: #ffffff; border-left: 6px solid #10b981; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                <h4 style="color: #065f46; margin: 0 0 6px 0;">1. Pradhan Mantri Matru Vandana Yojana (PMMVY)</h4>
-                <p style="color: #475569; font-size: 0.9rem; margin: 0;">Direct Cash Benefit of <b>₹5,000</b> in three installments upon registration, antenatal check-ups (ANC), and child vaccination.</p>
-            </div>
-            <div style="background: #ffffff; border-left: 6px solid #3b82f6; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                <h4 style="color: #1e40af; margin: 0 0 6px 0;">2. POSHAN Abhiyaan (National Nutrition Mission)</h4>
-                <p style="color: #475569; font-size: 0.9rem; margin: 0;">Supplementary nutrition, micronutrient packets, and hot cooked meals provided free at the local Anganwadi center for pregnant and lactating women.</p>
-            </div>
-            <div style="background: #ffffff; border-left: 6px solid #f59e0b; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                <h4 style="color: #92400e; margin: 0 0 6px 0;">3. Iron and Folic Acid (IFA) Distribution</h4>
-                <p style="color: #475569; font-size: 0.9rem; margin: 0;">Free 180-day course of Iron-Folic Acid tablets to prevent maternal anemia and ensure healthy baby birth weight.</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    elif page == "Ambulance & Emergency":
-        st.markdown("### 🚑 Emergency Transport & Hospital Logistics")
-        st.markdown("""
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <div style="background: #ffffff; border: 1.5px solid #fda4af; border-radius: 14px; padding: 20px;">
-                <h4 style="color: #9f1239; margin: 0 0 8px 0;">🚨 108 Emergency Ambulance</h4>
-                <p style="color: #475569; font-size: 0.9rem; margin: 0 0 10px 0;">Dispatches trained paramedic ambulance directly to your village location with GPS tracking.</p>
-                <b>Dial: 108 (24x7 Free)</b>
-            </div>
-            <div style="background: #ffffff; border: 1.5px solid #93c5fd; border-radius: 14px; padding: 20px;">
-                <h4 style="color: #1e40af; margin: 0 0 8px 0;">🚐 102 Janani Shishu Van</h4>
-                <p style="color: #475569; font-size: 0.9rem; margin: 0 0 10px 0;">Free dedicated drop-back transport for mother and newborn infant after institutional hospital delivery.</p>
-                <b>Dial: 102 (Free for Mothers)</b>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    elif page == "Health Guidelines":
-        st.markdown("### 📢 Essential Maternal Danger Signs to Watch For")
-        st.markdown("""
-        <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 14px; padding: 20px;">
-            <h4 style="color: #92400e; margin: 0 0 10px 0;">Seek Immediate Medical Care If You Notice:</h4>
-            <ul style="color: #78350f; font-size: 0.92rem; line-height: 1.8; margin: 0;">
-                <li>Vaginal bleeding or spotting at any stage of pregnancy.</li>
-                <li>Severe swelling in face, hands, or sudden unexplained weight gain.</li>
-                <li>Severe persistent headaches with blurred vision or dizziness (signs of high BP/preeclampsia).</li>
-                <li>Reduced or absent fetal movements after the 5th month.</li>
-                <li>Sudden leakage of fluid (water breaking) before delivery term.</li>
-                <li>High fever with shivering or severe lower abdominal cramps.</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
->>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
 
 def logout():
     """Clear session data and return to login."""
