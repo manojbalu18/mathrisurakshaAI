@@ -1,0 +1,26 @@
+[
+    {
+        "facility_id": "FAC-DEMO-001",
+        "item_id": "MED-001",
+        "item_name": "Paracetamol 500mg",
+        "generic_name": "Paracetamol",
+        "quantity": 100,
+        "unit": "Tablets"
+    },
+    {
+        "facility_id": "FAC-DEMO-001",
+        "item_id": "MED-002",
+        "item_name": "Amoxicillin 250mg",
+        "generic_name": "Amoxicillin",
+        "quantity": 20,
+        "unit": "Capsules"
+    },
+    {
+        "facility_id": "FAC-DEMO-002",
+        "item_id": "MED-001",
+        "item_name": "Paracetamol 500mg",
+        "generic_name": "Paracetamol",
+        "quantity": 0,
+        "unit": "Tablets"
+    }
+]

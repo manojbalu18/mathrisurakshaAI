@@ -1,0 +1,26 @@
+[
+    {
+        "facility_id": "FAC-DEMO-001",
+        "item_id": "DIAG-001",
+        "item_name": "Complete Blood Count (CBC)",
+        "category": "Pathology",
+        "department": "Laboratory",
+        "status": "AVAILABLE"
+    },
+    {
+        "facility_id": "FAC-DEMO-001",
+        "item_id": "DIAG-002",
+        "item_name": "X-Ray Chest PA View",
+        "category": "Radiology",
+        "department": "Radiology",
+        "status": "LIMITED"
+    },
+    {
+        "facility_id": "FAC-DEMO-002",
+        "item_id": "DIAG-003",
+        "item_name": "MRI Brain",
+        "category": "Radiology",
+        "department": "Advanced Imaging",
+        "status": "UNAVAILABLE"
+    }
+]
