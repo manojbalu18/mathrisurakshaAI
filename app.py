@@ -106,10 +106,13 @@ def process_offline_sync():
                 elif feature == "location":
                     from database import update_location
                     update_location(user_id, payload['latitude'], payload['longitude'])
+<<<<<<< HEAD
                 elif feature == "community_screening":
                     from database import save_community_screening
                     payload['sync_status'] = "Synced"
                     save_community_screening(payload)
+=======
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
                 
                 # After successful sync, delete the offline record
                 delete_sync_record(rec_id)
@@ -4173,6 +4176,7 @@ def mother_dashboard():
         with st.expander(_t("ex_lib_title")):
             lib_col1, lib_col2 = st.columns(2)
             with lib_col1:
+<<<<<<< HEAD
                 st.video("assets/ex_butterfly.mp4", format="video/mp4")
                 st.markdown(f"**{_t('ex_butterfly')}**\n{_t('expl_butterfly')}")
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -4189,6 +4193,24 @@ def mother_dashboard():
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 st.video("assets/ex_side_lunges.mp4", format="video/mp4")
+=======
+                st.image("assets/ex_butterfly.png", use_container_width=True)
+                st.markdown(f"**{_t('ex_butterfly')}**\n{_t('expl_butterfly')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.image("assets/ex_duck_walk.png", use_container_width=True)
+                st.markdown(f"**{_t('ex_duck_walk')}**\n{_t('expl_duck_walk')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.image("assets/ex_squats.png", use_container_width=True)
+                st.markdown(f"**{_t('ex_squats')}**\n{_t('expl_squats')}")
+            with lib_col2:
+                st.image("assets/ex_hip_rotation.png", use_container_width=True)
+                st.markdown(f"**{_t('ex_hip_rotation')}**\n{_t('expl_hip_rotation')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.image("assets/ex_side_lunges.png", use_container_width=True)
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
                 st.markdown(f"**{_t('ex_side_lunges')}**\n{_t('expl_side_lunges')}")
         
         # Progress Tracker
@@ -6338,6 +6360,7 @@ def supervisor_dashboard():
         except Exception as e:
             st.error(f"Error loading cases directory: {e}")
 
+<<<<<<< HEAD
 def get_community_hospitals_catalog():
     """Shared catalog of accredited health centres, CHCs, and Apex hospitals situated around patient."""
     return [
@@ -7000,6 +7023,15 @@ def community_care_dashboard():
     }
     v_lat, v_lon = village_coords.get(village, (17.3850, 78.4867))
     
+=======
+def community_care_dashboard():
+    """Render the Community Care & Village Health Support Portal."""
+    import database_village_health as dvh
+    
+    village = st.session_state.get('community_village', 'Rampur')
+    member = st.session_state.get('community_member', 'Community Member')
+    
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
     with st.sidebar:
         # Top back navigation buttons
         c_nav_c1, c_nav_c2 = st.columns([1.5, 1])
@@ -7023,10 +7055,13 @@ def community_care_dashboard():
         
         c_nav = {
             "Community Health Hub": ("Health Hub & Contacts", "🏥"),
+<<<<<<< HEAD
             "Talk to a Doctor": ("Talk to a Doctor", "📞"),
             "Community Voice Assistant": ("Voice Health Assistant", "🎤"),
             "Community Health Screening": ("Health Check", "🩺"),
             "My Health & Follow-up": ("My Health & Follow-up", "🔄"),
+=======
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
             "Immunization Camps": ("Village Health Camps", "💉"),
             "Nutrition Schemes": ("Maternal Nutrition Schemes", "🥗"),
             "Ambulance & Emergency": ("108 Emergency Transport", "🚑"),
@@ -7037,6 +7072,7 @@ def community_care_dashboard():
         for k, (lbl, icon) in c_nav.items():
             if st.button(f"{icon} {lbl}", use_container_width=True, type="primary" if cur_page == k else "secondary", key=f"comm_btn_{k}"):
                 st.session_state['community_page'] = k
+<<<<<<< HEAD
                 st.rerun()
                 
         # Prominent quick card in sidebar for Talk to a Doctor
@@ -7101,6 +7137,9 @@ def community_care_dashboard():
             st.session_state['community_page'] = "My Health & Follow-up"
             st.rerun()
 
+=======
+                
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
         st.divider()
         cur_lang = st.session_state.get('language', 'English')
         st.selectbox("🌐 " + _t("lang_toggle"), SUPPORTED_LANGUAGES, index=SUPPORTED_LANGUAGES.index(cur_lang) if cur_lang in SUPPORTED_LANGUAGES else 0, key="comm_lang_toggle", on_change=lambda: st.session_state.update({"language": st.session_state.comm_lang_toggle}))
@@ -7127,10 +7166,17 @@ def community_care_dashboard():
                     👨‍👩‍👧 COMMUNITY CARE NETWORK
                 </span>
                 <h1 style="margin: 6px 0 2px 0; font-size: 1.9rem; color: #064e3b; font-family: 'Outfit', sans-serif; font-weight: 800;">
+<<<<<<< HEAD
                     {village} Community Health & Support
                 </h1>
                 <p style="margin: 0; color: #047857; font-size: 0.92rem; font-weight: 500;">
                     Free government healthcare benefits, doctor consultation, voice health assistance, health screening, and emergency transport.
+=======
+                    {village} Maternal & Child Community Care
+                </h1>
+                <p style="margin: 0; color: #047857; font-size: 0.92rem; font-weight: 500;">
+                    Free government maternal benefits, immunization camps, Anganwadi food distribution, and emergency transport.
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
                 </p>
             </div>
             <div>
@@ -7143,6 +7189,7 @@ def community_care_dashboard():
     """, unsafe_allow_html=True)
     
     if page == "Community Health Hub":
+<<<<<<< HEAD
         # 1. Prominent Action Cards at the very top of the Hub
         st.markdown("""
         <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #86efac; border-radius: 16px; padding: 18px 22px; margin-bottom: 16px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);">
@@ -8372,10 +8419,49 @@ def community_care_dashboard():
                     <div>
                         <span style="font-size: 1.1rem; font-weight: 800;">{badge}</span>
                     </div>
+=======
+        col1, col2 = st.columns([1.5, 1])
+        with col1:
+            st.markdown("### 🏥 Village Health Contacts & Support")
+            st.markdown(f"""
+            <div style="background: #ffffff; border: 1.5px solid #86efac; border-radius: 16px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+                <h4 style="color: #065f46; margin: 0 0 10px 0;">Primary Village Healthcare Workers</h4>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f0fdf4; padding-bottom: 8px;">
+                        <span>👩‍⚕️ <b>ASHA Worker ({village}):</b> Sunita Devi</span>
+                        <span style="color: #0284c7; font-weight: 700;">📞 98765-43210</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f0fdf4; padding-bottom: 8px;">
+                        <span>🥗 <b>Anganwadi Worker (AWW):</b> Rekha Sharma</span>
+                        <span style="color: #0284c7; font-weight: 700;">📞 98765-43211</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f0fdf4; padding-bottom: 8px;">
+                        <span>🩺 <b>Auxiliary Nurse Midwife (ANM):</b> Meena Kumari</span>
+                        <span style="color: #0284c7; font-weight: 700;">📞 98765-43212</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>🚑 <b>Emergency Ambulance Coordinator:</b> 24/7 Dispatch</span>
+                        <span style="color: #dc2626; font-weight: 800;">📞 108 / 102</span>
+                    </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
+        with col2:
+            st.markdown("### 🚨 Rapid Emergency Call")
+            st.markdown("""
+            <div style="background: #fff1f2; border: 2px solid #f43f5e; border-radius: 16px; padding: 20px; text-align: center;">
+                <div style="font-size: 2.2rem; margin-bottom: 6px;">🚑</div>
+                <h3 style="color: #9f1239; margin: 0 0 6px 0;">Dial 108 Ambulance</h3>
+                <p style="color: #881337; font-size: 0.88rem; margin: 0 0 14px 0;">Free emergency ambulance transport for labor, bleeding, or urgent pregnancy complications.</p>
+                <div style="background: #ffffff; color: #e11d48; font-weight: 800; padding: 8px 16px; border-radius: 10px; font-size: 1.2rem; border: 1.5px solid #fda4af;">
+                    TOLL FREE: 108 / 102
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+<<<<<<< HEAD
             # Action Buttons: Talk to Doctor, My Health & Follow-up, Get Directions, Emergency
             st.markdown("##### Quick Actions (వెంటనే తీసుకోదగిన చర్యలు):")
             act_col1, act_col2, act_col3, act_col4 = st.columns(4)
@@ -8853,6 +8939,8 @@ def community_care_dashboard():
                         })
                     st.dataframe(pd.DataFrame(consult_data), use_container_width=True, hide_index=True)
 
+=======
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
     elif page == "Immunization Camps":
         st.markdown("### 💉 Upcoming Village Immunization Camps")
         st.markdown("Village Health Sanitation & Nutrition Day (VHSND) camps held every month.")
@@ -8866,6 +8954,7 @@ def community_care_dashboard():
             st.info("Vaccination camps active every Wednesday at the local Anganwadi center.")
             
     elif page == "Nutrition Schemes":
+<<<<<<< HEAD
         st.markdown("### 🥗 Maternal & Child Nutrition Schemes")
         st.markdown("Government nutrition benefits available for families in this village.")
         schemes = [
@@ -8919,6 +9008,58 @@ def community_care_dashboard():
             """)
 
 
+=======
+        st.markdown("### 🥗 Government Maternal & Child Nutrition Schemes")
+        st.markdown("""
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="background: #ffffff; border-left: 6px solid #10b981; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <h4 style="color: #065f46; margin: 0 0 6px 0;">1. Pradhan Mantri Matru Vandana Yojana (PMMVY)</h4>
+                <p style="color: #475569; font-size: 0.9rem; margin: 0;">Direct Cash Benefit of <b>₹5,000</b> in three installments upon registration, antenatal check-ups (ANC), and child vaccination.</p>
+            </div>
+            <div style="background: #ffffff; border-left: 6px solid #3b82f6; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <h4 style="color: #1e40af; margin: 0 0 6px 0;">2. POSHAN Abhiyaan (National Nutrition Mission)</h4>
+                <p style="color: #475569; font-size: 0.9rem; margin: 0;">Supplementary nutrition, micronutrient packets, and hot cooked meals provided free at the local Anganwadi center for pregnant and lactating women.</p>
+            </div>
+            <div style="background: #ffffff; border-left: 6px solid #f59e0b; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                <h4 style="color: #92400e; margin: 0 0 6px 0;">3. Iron and Folic Acid (IFA) Distribution</h4>
+                <p style="color: #475569; font-size: 0.9rem; margin: 0;">Free 180-day course of Iron-Folic Acid tablets to prevent maternal anemia and ensure healthy baby birth weight.</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    elif page == "Ambulance & Emergency":
+        st.markdown("### 🚑 Emergency Transport & Hospital Logistics")
+        st.markdown("""
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div style="background: #ffffff; border: 1.5px solid #fda4af; border-radius: 14px; padding: 20px;">
+                <h4 style="color: #9f1239; margin: 0 0 8px 0;">🚨 108 Emergency Ambulance</h4>
+                <p style="color: #475569; font-size: 0.9rem; margin: 0 0 10px 0;">Dispatches trained paramedic ambulance directly to your village location with GPS tracking.</p>
+                <b>Dial: 108 (24x7 Free)</b>
+            </div>
+            <div style="background: #ffffff; border: 1.5px solid #93c5fd; border-radius: 14px; padding: 20px;">
+                <h4 style="color: #1e40af; margin: 0 0 8px 0;">🚐 102 Janani Shishu Van</h4>
+                <p style="color: #475569; font-size: 0.9rem; margin: 0 0 10px 0;">Free dedicated drop-back transport for mother and newborn infant after institutional hospital delivery.</p>
+                <b>Dial: 102 (Free for Mothers)</b>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    elif page == "Health Guidelines":
+        st.markdown("### 📢 Essential Maternal Danger Signs to Watch For")
+        st.markdown("""
+        <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 14px; padding: 20px;">
+            <h4 style="color: #92400e; margin: 0 0 10px 0;">Seek Immediate Medical Care If You Notice:</h4>
+            <ul style="color: #78350f; font-size: 0.92rem; line-height: 1.8; margin: 0;">
+                <li>Vaginal bleeding or spotting at any stage of pregnancy.</li>
+                <li>Severe swelling in face, hands, or sudden unexplained weight gain.</li>
+                <li>Severe persistent headaches with blurred vision or dizziness (signs of high BP/preeclampsia).</li>
+                <li>Reduced or absent fetal movements after the 5th month.</li>
+                <li>Sudden leakage of fluid (water breaking) before delivery term.</li>
+                <li>High fever with shivering or severe lower abdominal cramps.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+>>>>>>> cf880296a2c800349ab39c194430fe842f11c22e
 
 def logout():
     """Clear session data and return to login."""
